@@ -10,7 +10,7 @@ import { LoginPage } from './pages/LoginPage';
 import { DatabaseStatusPage } from './pages/DatabaseStatusPage';
 import { RiesgosVisualizacion } from './pages/RiesgosVisualizacion';
 import { MatrizVisualizacion } from './pages/MatrizVisualizacion';
-import { Matrices } from './pages/Matrices';
+import { Matrices, ACTIVE_MATRIZ_STORAGE_KEY } from './pages/Matrices';
 import { CrearUsuario } from './pages/CrearUsuario';
 
 function MainApp() {
@@ -42,6 +42,11 @@ function MainApp() {
         ) : activeTab === 'matrices' ? (
           <Matrices
             onCreateMatriz={() => {
+              try {
+                localStorage.removeItem(ACTIVE_MATRIZ_STORAGE_KEY);
+              } catch {
+                // ignore
+              }
               setSelectedMatriz(null);
               setActiveTab('matrizVisualizacion');
             }}
@@ -64,6 +69,11 @@ function MainApp() {
               setActiveTab('matrizVisualizacion');
             }}
             onCreateMatriz={() => {
+              try {
+                localStorage.removeItem(ACTIVE_MATRIZ_STORAGE_KEY);
+              } catch {
+                // ignore
+              }
               setSelectedMatriz(null);
               setActiveTab('matrizVisualizacion');
             }}

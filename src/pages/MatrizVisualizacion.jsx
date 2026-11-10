@@ -2,12 +2,14 @@ import { useState, useMemo, useEffect } from 'react';
 import { useRiskContext } from '../hooks/useRiskContext';
 import { useAuth } from '../hooks/useAuth';
 import { api, tokenStorage } from '../services/api';
+import { riskService } from '../services/riskService';
 import { ACTIVE_MATRIZ_STORAGE_KEY } from './Matrices';
 import { calculateRiskScore, getRiskSeverity } from '../utils/riskCalculations';
 import { MatrizHeaderPanel } from '../components/matrix/MatrizHeaderPanel';
 import { MatrizFilterBar } from '../components/matrix/MatrizFilterBar';
 import { MatrizTable } from '../components/matrix/MatrizTable';
 import { MatrizRiskModal } from '../components/matrix/MatrizRiskModal';
+import { MatrizStandardsModal } from '../components/matrix/MatrizStandardsModal';
 import { Save, RefreshCw, FileSpreadsheet } from 'lucide-react';
 
 // Fecha predeterminada de análisis
@@ -43,7 +45,13 @@ function mapCatalogRiskToMatrixRow(r, idx = 0) {
 }
 
 export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
-  const { allRisks, estandares = [], subestandares = [] } = useRiskContext();
+  const {
+    allRisks,
+    estandares = [],
+    subestandares = [],
+    isLoadingRisks,
+    refreshRisks,
+  } = useRiskContext();
   const { user } = useAuth();
 
   // Resolver si estamos editando una matriz existente o creando una nueva
@@ -57,8 +65,6 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
     }
   }, [selectedMatriz]);
 
-  const isCreatingNew = !activeMatriz;
-
   // Metadatos de la tabla `matriz`
   const [currentMatrizId, setCurrentMatrizId] = useState(
     activeMatriz?.id || null
@@ -66,12 +72,20 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
   const [identificador, setIdentificador] = useState(
     activeMatriz?.identificador || ''
   );
+  // Versión base de la matriz que se está editando (impide bajar a una versión menor)
+  const [baseVersionMatriz, setBaseVersionMatriz] = useState(
+    Number(activeMatriz?.version_matriz) || 1
+  );
   const [versionMatriz, setVersionMatriz] = useState(
-    activeMatriz?.version_matriz || 1
+    Number(activeMatriz?.version_matriz) || 1
   );
 
-  // Selector de riesgo del catálogo para cargarlo en la matriz
-  const [selectedCatalogRiskId, setSelectedCatalogRiskId] = useState('');
+  const isCreatingNew = !activeMatriz && !currentMatrizId;
+
+  // Pop-up inicial de selección de estándares: únicamente aparece cuando se crea una matriz nueva
+  const [isStandardsModalOpen, setIsStandardsModalOpen] = useState(
+    () => !activeMatriz
+  );
 
   // Lista de riesgos que existen únicamente dentro de esta matriz
   const [risks, setRisks] = useState([]);
@@ -82,6 +96,13 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
   const [isSavingMatriz, setIsSavingMatriz] = useState(false);
   const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [saveFeedback, setSaveFeedback] = useState(null);
+
+  // Al abrir el pop-up de nueva matriz, sincronizar estándares y riesgos de la BD
+  useEffect(() => {
+    if (isCreatingNew && refreshRisks) {
+      refreshRisks();
+    }
+  }, [isCreatingNew, refreshRisks]);
 
   // Si estamos editando una matriz existente, cargar sus datos desde `matriz_datos`
   useEffect(() => {
@@ -148,36 +169,42 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
   };
 
   const handleVersionChange = (val) => {
-    setVersionMatriz(val);
+    const minAllowed = Number(baseVersionMatriz) || 1;
+    const nextVersion = Math.max(minAllowed, Number(val) || minAllowed);
+    setVersionMatriz(nextVersion);
     setHasUnsavedChanges(true);
     setSaveFeedback(null);
   };
 
-  // Cargar un riesgo seleccionado del catálogo dentro de la matriz
-  const handleSelectCatalogRisk = (riskId) => {
+  // Precargar en la matriz nueva todos los riesgos asociados a los estándares seleccionados
+  const handleConfirmStandards = async (selectedStandards = []) => {
     setSaveFeedback(null);
-    setSelectedCatalogRiskId(riskId);
-
-    if (!riskId) return;
-
-    const foundRisk = (allRisks || []).find(
-      (r) => String(r.id) === String(riskId)
+    const associatedRisks = await riskService.fetchRisksByEstandares(
+      selectedStandards,
+      { allRisks, subestandares }
     );
-    if (!foundRisk) return;
 
-    setRisks((prev) => {
-      const mapped = mapCatalogRiskToMatrixRow(foundRisk, prev.length);
-      const alreadyExists = prev.some(
-        (item) => String(item.id) === String(mapped.id)
-      );
-      if (alreadyExists) {
-        return prev;
-      }
-      return [...prev, mapped];
+    const mappedRows = associatedRisks.map((r, idx) =>
+      mapCatalogRiskToMatrixRow(r, idx)
+    );
+
+    setRisks(mappedRows);
+    setHasUnsavedChanges(mappedRows.length > 0);
+    setIsStandardsModalOpen(false);
+
+    const standardCodes = selectedStandards
+      .map((s) => s.codigo_estandar)
+      .join(', ');
+
+    setSaveFeedback({
+      type: 'success',
+      message:
+        mappedRows.length > 0
+          ? `Se precargaron ${mappedRows.length} ${
+              mappedRows.length === 1 ? 'riesgo asociado' : 'riesgos asociados'
+            } a los estándares seleccionados (${standardCodes}).`
+          : `Se seleccionaron los estándares (${standardCodes}), pero aún no tienen riesgos registrados en el catálogo.`,
     });
-
-    setHasUnsavedChanges(true);
-    setSelectedCatalogRiskId('');
   };
 
   // Filtros de visualización en tabla
@@ -357,7 +384,14 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
 
     // Conservar el empresa_id original de la matriz (útil cuando Admin edita matrices de diferentes empresas)
     const empresaId = activeMatriz?.empresa_id ?? user?.empresa_id ?? 1;
-    const version = Number(versionMatriz) || 1;
+    const minVersion = Number(baseVersionMatriz) || 1;
+    const version = Math.max(minVersion, Number(versionMatriz) || minVersion);
+
+    // Si estamos actualizando una matriz existente y el usuario incrementó el número de versión,
+    // se registra una nueva matriz en la BD para conservar la versión anterior (ej. v1) y crear la nueva (ej. v2).
+    const isCreatingNewVersionRecord = Boolean(
+      currentMatrizId && version > minVersion
+    );
 
     const datosJsonb = risks.map((r) => {
       const score = calculateRiskScore(r.probability, r.impact);
@@ -404,14 +438,21 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
         version_matriz: version,
       };
 
-      if (matrizId) {
+      if (matrizId && !isCreatingNewVersionRecord) {
+        // Misma versión: actualizar la matriz actual
         const resUpdate = await api.put(
           `/matriz/modificar/${matrizId}`,
           matrizPayload
         );
         savedMatrizHeader = resUpdate?.matriz || resUpdate;
       } else {
-        const resCreate = await api.post('/matriz/guardar', matrizPayload);
+        // Matriz nueva o cambio de versión (conservar versión anterior y crear nuevo registro)
+        const resCreate = await api.post('/matriz/guardar', {
+          ...matrizPayload,
+          ...(isCreatingNewVersionRecord
+            ? { matriz_origen_id: currentMatrizId }
+            : {}),
+        });
         savedMatrizHeader = resCreate?.matriz || resCreate;
         matrizId = savedMatrizHeader?.id;
       }
@@ -429,6 +470,8 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
       });
 
       setCurrentMatrizId(matrizId);
+      setBaseVersionMatriz(version);
+      setVersionMatriz(version);
       setHasUnsavedChanges(false);
 
       syncLocalMatrizStorage({
@@ -445,7 +488,9 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
       if (!silentSuccess) {
         setSaveFeedback({
           type: 'success',
-          message: `Matriz "${finalIdentificador}" (ID #${matrizId}) y sus ${datosJsonb.length} riesgos guardados exitosamente en "matriz" y "matriz_datos".`,
+          message: isCreatingNewVersionRecord
+            ? `Se creó un nuevo registro para "${finalIdentificador}" (Versión ${version}, ID #${matrizId}) conservando intacta la Versión ${minVersion}.`
+            : `Matriz "${finalIdentificador}" (Versión ${version}, ID #${matrizId}) y sus ${datosJsonb.length} riesgos guardados exitosamente en "matriz" y "matriz_datos".`,
         });
       }
 
@@ -461,8 +506,15 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
         return null;
       }
 
-      const fallbackId = currentMatrizId || Date.now();
+      // Si se incrementó la versión estando en modo local, generar un nuevo ID para conservar la versión anterior
+      const fallbackId =
+        !currentMatrizId || isCreatingNewVersionRecord
+          ? Date.now()
+          : currentMatrizId;
+
       setCurrentMatrizId(fallbackId);
+      setBaseVersionMatriz(version);
+      setVersionMatriz(version);
       setHasUnsavedChanges(false);
 
       syncLocalMatrizStorage({
@@ -470,8 +522,9 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
         empresa_id: empresaId,
         identificador: finalIdentificador,
         version_matriz: version,
-        fecha_creacion:
-          activeMatriz?.fecha_creacion || new Date().toISOString(),
+        fecha_creacion: isCreatingNewVersionRecord
+          ? new Date().toISOString()
+          : activeMatriz?.fecha_creacion || new Date().toISOString(),
         fecha_actualizacion: new Date().toISOString(),
         datos: datosJsonb,
       });
@@ -479,7 +532,9 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
       if (!silentSuccess) {
         setSaveFeedback({
           type: 'success',
-          message: `Matriz "${finalIdentificador}" preparada y guardada localmente (${datosJsonb.length} riesgos listos para "matriz_datos"). Conecta el backend para sincronizar con PostgreSQL.`,
+          message: isCreatingNewVersionRecord
+            ? `Se generó un nuevo registro local para "${finalIdentificador}" (Versión ${version}, ID #${fallbackId}) conservando la Versión ${minVersion}.`
+            : `Matriz "${finalIdentificador}" (Versión ${version}) preparada y guardada localmente (${datosJsonb.length} riesgos listos para "matriz_datos").`,
         });
       }
 
@@ -606,13 +661,10 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
         setIdentificador={handleIdentificadorChange}
         currentMatrizId={currentMatrizId}
         versionMatriz={versionMatriz}
+        minVersionMatriz={baseVersionMatriz}
         setVersionMatriz={handleVersionChange}
         onBack={onBack}
         onOpenCreateModal={handleOpenCreateModal}
-        selectedCatalogRiskId={selectedCatalogRiskId}
-        onSelectCatalogRisk={handleSelectCatalogRisk}
-        allRisks={allRisks}
-        risks={risks}
         saveFeedback={saveFeedback}
         hasUnsavedChanges={hasUnsavedChanges}
       />
@@ -695,6 +747,20 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
         estandares={estandares}
         subestandares={subestandares}
       />
+
+      {/* Pop-up de Selección de Estándares (solo al crear una matriz nueva) */}
+      {isCreatingNew && (
+        <MatrizStandardsModal
+          isOpen={isStandardsModalOpen}
+          onClose={() => setIsStandardsModalOpen(false)}
+          onConfirmStandards={handleConfirmStandards}
+          estandares={estandares}
+          subestandares={subestandares}
+          allRisks={allRisks}
+          isLoadingStandards={isLoadingRisks}
+          onRefreshStandards={refreshRisks}
+        />
+      )}
     </div>
   );
 }

@@ -4,6 +4,9 @@ import {
   ArrowLeft,
   CheckCircle2,
   AlertCircle,
+  Layers,
+  Plus,
+  Minus,
 } from 'lucide-react';
 
 export function MatrizHeaderPanel({
@@ -12,16 +15,42 @@ export function MatrizHeaderPanel({
   setIdentificador,
   currentMatrizId,
   versionMatriz,
+  minVersionMatriz = 1,
   setVersionMatriz,
   onBack,
   onOpenCreateModal,
-  selectedCatalogRiskId,
-  onSelectCatalogRisk,
-  allRisks,
-  risks,
   saveFeedback,
   hasUnsavedChanges,
 }) {
+  const numericVersion = Number(versionMatriz) || minVersionMatriz;
+  const numericMinVersion = Number(minVersionMatriz) || 1;
+  const isCreatingNewVersion =
+    !isCreatingNew && numericVersion > numericMinVersion;
+
+  const handleDecrementVersion = () => {
+    if (numericVersion > numericMinVersion) {
+      setVersionMatriz(numericVersion - 1);
+    }
+  };
+
+  const handleIncrementVersion = () => {
+    setVersionMatriz(numericVersion + 1);
+  };
+
+  const handleInputVersionChange = (e) => {
+    const rawValue = e.target.value;
+    if (rawValue === '') {
+      setVersionMatriz(numericMinVersion);
+      return;
+    }
+    const parsed = parseInt(rawValue, 10);
+    if (isNaN(parsed) || parsed < numericMinVersion) {
+      setVersionMatriz(numericMinVersion);
+      return;
+    }
+    setVersionMatriz(parsed);
+  };
+
   return (
     <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-5">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -39,6 +68,12 @@ export function MatrizHeaderPanel({
               <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                 Identificación &bull; Evaluación &bull; Tratamiento
               </span>
+              {isCreatingNewVersion && (
+                <span className="inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                  <Layers className="w-3.5 h-3.5" />
+                  Nueva versión v{numericVersion} (conservará v{numericMinVersion})
+                </span>
+              )}
               {hasUnsavedChanges && (
                 <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-amber-50 text-amber-700 border border-amber-200">
                   Cambios sin guardar
@@ -47,7 +82,9 @@ export function MatrizHeaderPanel({
             </div>
             <p className="text-sm text-slate-500 mt-1">
               {isCreatingNew
-                ? 'Selecciona riesgos del catálogo para cargarlos o agrega nuevos riesgos personalizados a la matriz antes de guardarla.'
+                ? 'Se han precargado los riesgos de los estándares seleccionados. Puedes agregar más riesgos manualmente antes de guardar la matriz.'
+                : isCreatingNewVersion
+                ? `Al guardar con la versión ${numericVersion}, se creará un nuevo registro de matriz conservando intacta la versión ${numericMinVersion}.`
                 : 'Visualización y modificación de la Matriz de Riesgo. Los cambios hechos aquí existen dentro de la matriz hasta que presiones Guardar Matriz.'}
             </p>
           </div>
@@ -64,48 +101,24 @@ export function MatrizHeaderPanel({
               Regresar a Matrices
             </button>
           )}
+        </div>
+      </div>
 
+      {/* Panel de Configuración de la Matriz y Botón Agregar Riesgo */}
+      <div className="pt-4 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 bg-slate-50/70 p-4 rounded-xl border border-slate-200/70 items-start">
+        <div className="lg:col-span-2">
+          <label className="block text-xs font-bold text-indigo-900 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+            <PlusCircle className="w-3.5 h-3.5 text-indigo-600" />
+            Riesgos de la Matriz
+          </label>
           <button
             type="button"
             onClick={onOpenCreateModal}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-sm font-semibold rounded-xl transition-colors cursor-pointer"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm shadow-indigo-200 transition-colors cursor-pointer"
           >
             <PlusCircle className="w-4 h-4" />
             Agregar Riesgo
           </button>
-        </div>
-      </div>
-
-      {/* Panel de Configuración de la Matriz y Selector de Riesgos */}
-      <div className="pt-4 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 bg-slate-50/70 p-4 rounded-xl border border-slate-200/70">
-        <div className="lg:col-span-2">
-          <label className="block text-xs font-bold text-indigo-900 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-            <PlusCircle className="w-3.5 h-3.5 text-indigo-600" />
-            Seleccionar Riesgo para Cargar en la Matriz
-          </label>
-          <select
-            value={selectedCatalogRiskId}
-            onChange={(e) => onSelectCatalogRisk(e.target.value)}
-            className="w-full px-3.5 py-2 border border-indigo-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800"
-          >
-            <option value="">
-              -- Selecciona un riesgo registrado para agregarlo --
-            </option>
-            {(allRisks || []).map((r) => {
-              const rEst = r.codigo_estandar || r.estandar || 'N/A';
-              const rSub = r.codigo_subestandar || r.subestandar || 'N/A';
-              const rTitle = r.title || r.riesgo || 'Sin título';
-              const alreadyInMatrix = risks.some(
-                (item) => String(item.id) === String(r.id)
-              );
-              return (
-                <option key={r.id} value={r.id} disabled={alreadyInMatrix}>
-                  [{rEst} / {rSub}] {rTitle}
-                  {alreadyInMatrix ? ' (Ya cargado)' : ''}
-                </option>
-              );
-            })}
-          </select>
         </div>
 
         <div>
@@ -122,16 +135,62 @@ export function MatrizHeaderPanel({
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-            Versión de la Matriz
-          </label>
-          <input
-            type="number"
-            min="1"
-            value={versionMatriz}
-            onChange={(e) => setVersionMatriz(Number(e.target.value) || 1)}
-            className="w-full px-3.5 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
+          <div className="flex items-center justify-between gap-2 mb-1.5">
+            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider">
+              Versión de la Matriz
+            </label>
+            {!isCreatingNew && (
+              <span className="text-[11px] font-semibold text-slate-500">
+                Mín. v{numericMinVersion}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center">
+            <button
+              type="button"
+              onClick={handleDecrementVersion}
+              disabled={numericVersion <= numericMinVersion}
+              title={
+                numericVersion <= numericMinVersion
+                  ? `No es posible reducir la versión por debajo de v${numericMinVersion}. Selecciona una versión anterior desde la vista de Matrices.`
+                  : 'Disminuir versión'
+              }
+              className="px-3 py-2 border border-r-0 border-slate-200 rounded-l-lg bg-slate-100 hover:bg-slate-200 disabled:bg-slate-50 disabled:text-slate-300 text-slate-700 transition-colors cursor-pointer disabled:cursor-not-allowed"
+            >
+              <Minus className="w-4 h-4" />
+            </button>
+            <input
+              type="number"
+              min={numericMinVersion}
+              step={1}
+              value={numericVersion}
+              onChange={handleInputVersionChange}
+              onKeyDown={(e) => {
+                if (
+                  e.key === 'ArrowDown' &&
+                  numericVersion <= numericMinVersion
+                ) {
+                  e.preventDefault();
+                }
+              }}
+              className="w-full px-3 py-2 border-y border-slate-200 text-center font-bold text-sm bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <button
+              type="button"
+              onClick={handleIncrementVersion}
+              title="Incrementar versión para generar un nuevo registro de matriz"
+              className="px-3 py-2 border border-l-0 border-slate-200 rounded-r-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 transition-colors cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
+          {!isCreatingNew && (
+            <p className="text-[11px] text-slate-500 mt-1 leading-tight">
+              {isCreatingNewVersion
+                ? `Se guardará como nueva Matriz v${numericVersion} y se conservará v${numericMinVersion}.`
+                : `Versión base v${numericMinVersion}. Para editar una versión menor, selecciónala en Matrices.`}
+            </p>
+          )}
         </div>
       </div>
 

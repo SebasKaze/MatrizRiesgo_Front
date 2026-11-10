@@ -397,7 +397,7 @@ export function MatrizTable({
                       <>
                         <p className="font-medium text-sm text-slate-700">
                           {isCreatingNew
-                            ? 'Selecciona un riesgo en el selector superior para cargarlo en la matriz o agrega un riesgo nuevo manualmente.'
+                            ? 'Aún no hay riesgos en la matriz. Selecciona estándares para precargar sus riesgos o agrega un riesgo nuevo manualmente.'
                             : 'Esta matriz aún no tiene riesgos registrados.'}
                         </p>
                         <button

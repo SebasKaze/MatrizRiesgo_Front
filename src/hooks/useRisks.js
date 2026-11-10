@@ -137,6 +137,88 @@ export function useRisks() {
     return created;
   };
 
+  const updateEstandar = async (
+    id,
+    { codigo_estandar, descripcion, oldCodigoEstandar }
+  ) => {
+    const updated = await riskService.updateEstandar(id, {
+      codigo_estandar,
+      descripcion,
+    });
+
+    setRawEstandares((prev) => {
+      const exists = prev.some(
+        (e) =>
+          String(e.id) === String(id) ||
+          (oldCodigoEstandar && e.codigo_estandar === oldCodigoEstandar)
+      );
+      if (!exists) return [updated, ...prev];
+      return prev.map((e) =>
+        String(e.id) === String(id) ||
+        (oldCodigoEstandar && e.codigo_estandar === oldCodigoEstandar)
+          ? updated
+          : e
+      );
+    });
+
+    if (oldCodigoEstandar && oldCodigoEstandar !== updated.codigo_estandar) {
+      setRawSubestandares((prev) =>
+        prev.map((s) =>
+          String(s.estandar_id) === String(id) ||
+          s.codigo_estandar === oldCodigoEstandar
+            ? { ...s, codigo_estandar: updated.codigo_estandar }
+            : s
+        )
+      );
+      setRisks((prev) =>
+        prev.map((r) =>
+          String(r.estandar_id) === String(id) ||
+          r.estandar === oldCodigoEstandar ||
+          r.codigo_estandar === oldCodigoEstandar
+            ? {
+                ...r,
+                estandar: updated.codigo_estandar,
+                codigo_estandar: updated.codigo_estandar,
+              }
+            : r
+        )
+      );
+    }
+
+    return updated;
+  };
+
+  const removeEstandar = async (estandarObj) => {
+    const id = estandarObj?.id ?? estandarObj;
+    const codigo = estandarObj?.codigo_estandar;
+    await riskService.deleteEstandar(id);
+
+    setRawEstandares((prev) =>
+      prev.filter(
+        (e) =>
+          String(e.id) !== String(id) &&
+          (!codigo || e.codigo_estandar !== codigo)
+      )
+    );
+    setRawSubestandares((prev) =>
+      prev.filter(
+        (s) =>
+          String(s.estandar_id) !== String(id) &&
+          (!codigo || s.codigo_estandar !== codigo)
+      )
+    );
+    if (codigo) {
+      setRisks((prev) =>
+        prev.filter(
+          (r) =>
+            String(r.estandar_id) !== String(id) &&
+            r.estandar !== codigo &&
+            r.codigo_estandar !== codigo
+        )
+      );
+    }
+  };
+
   const addSubestandar = async ({
     estandar_id,
     codigo_estandar,
@@ -153,15 +235,105 @@ export function useRisks() {
     return created;
   };
 
+  const updateSubestandar = async (
+    id,
+    {
+      estandar_id,
+      codigo_estandar,
+      codigo_subestandar,
+      descripcion,
+      oldCodigoSubestandar,
+    }
+  ) => {
+    const updated = await riskService.updateSubestandar(id, {
+      estandar_id,
+      codigo_estandar,
+      codigo_subestandar,
+      descripcion,
+    });
+
+    setRawSubestandares((prev) => {
+      const exists = prev.some(
+        (s) =>
+          String(s.id) === String(id) ||
+          (oldCodigoSubestandar &&
+            s.codigo_subestandar === oldCodigoSubestandar)
+      );
+      if (!exists) return [updated, ...prev];
+      return prev.map((s) =>
+        String(s.id) === String(id) ||
+        (oldCodigoSubestandar && s.codigo_subestandar === oldCodigoSubestandar)
+          ? updated
+          : s
+      );
+    });
+
+    if (
+      oldCodigoSubestandar &&
+      oldCodigoSubestandar !== updated.codigo_subestandar
+    ) {
+      setRisks((prev) =>
+        prev.map((r) =>
+          String(r.subestandar_id) === String(id) ||
+          r.subestandar === oldCodigoSubestandar ||
+          r.codigo_subestandar === oldCodigoSubestandar
+            ? {
+                ...r,
+                estandar: updated.codigo_estandar || r.estandar,
+                codigo_estandar:
+                  updated.codigo_estandar || r.codigo_estandar,
+                subestandar: updated.codigo_subestandar,
+                codigo_subestandar: updated.codigo_subestandar,
+              }
+            : r
+        )
+      );
+    }
+
+    return updated;
+  };
+
+  const removeSubestandar = async (subestandarObj) => {
+    const id = subestandarObj?.id ?? subestandarObj;
+    const codigoSub = subestandarObj?.codigo_subestandar;
+    await riskService.deleteSubestandar(id);
+
+    setRawSubestandares((prev) =>
+      prev.filter(
+        (s) =>
+          String(s.id) !== String(id) &&
+          (!codigoSub || s.codigo_subestandar !== codigoSub)
+      )
+    );
+    if (codigoSub) {
+      setRisks((prev) =>
+        prev.filter(
+          (r) =>
+            String(r.subestandar_id) !== String(id) &&
+            r.subestandar !== codigoSub &&
+            r.codigo_subestandar !== codigoSub
+        )
+      );
+    }
+  };
+
   const addRisk = async (newRisk) => {
     const createdRisk = await riskService.createRisk(newRisk);
     setRisks((prev) => [createdRisk, ...prev]);
     return createdRisk;
   };
 
+  const updateRisk = async (id, updatedData) => {
+    const updatedRisk = await riskService.updateRisk(id, updatedData);
+    setRisks((prev) =>
+      prev.map((r) => (String(r.id) === String(id) ? updatedRisk : r))
+    );
+    return updatedRisk;
+  };
+
   const removeRisk = async (id) => {
     await riskService.deleteRisk(id);
-    setRisks((prev) => prev.filter((r) => r.id !== id));
+    setRisks((prev) => prev.filter((r) => String(r.id) !== String(id)));
   };
 
   const filteredRisks = useMemo(() => {
@@ -204,7 +376,11 @@ export function useRisks() {
     estandares,
     subestandares,
     addEstandar,
+    updateEstandar,
+    removeEstandar,
     addSubestandar,
+    updateSubestandar,
+    removeSubestandar,
     isLoadingRisks,
     refreshRisks,
     stats,
@@ -219,6 +395,7 @@ export function useRisks() {
     openStandardModal,
     closeStandardModal,
     addRisk,
+    updateRisk,
     removeRisk,
   };
 }

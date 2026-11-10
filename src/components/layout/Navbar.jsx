@@ -23,9 +23,6 @@ export function Navbar({ onToggleSidebar }) {
             </button>
 
             <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-100">
-                <ShieldAlert className="w-6 h-6" />
-              </div>
               <div className="hidden sm:block">
                 <span className="font-bold text-lg text-slate-900 tracking-tight block leading-tight">
                   Matriz de Riesgos

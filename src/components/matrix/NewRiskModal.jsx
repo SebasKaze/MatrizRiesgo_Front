@@ -4,25 +4,35 @@ import { useRiskContext } from '../../hooks/useRiskContext';
 import { PROBABILITY_LEVELS, IMPACT_LEVELS } from '../../constants/riskConstants';
 import { calculateRiskScore, getRiskSeverity } from '../../utils/riskCalculations';
 
-const INITIAL_FORM_STATE = {
-  estandar: '',
-  subestandar: '',
-  title: '',
-  description: '',
-  category: 'Operacional',
-  causa: '',
-  consecuencia: '',
-  factor: 'Interno',
-  probability: 3,
-  impact: 3,
-  responsible: '',
-  status: 'Abierto',
-  plan: '',
-};
+const getInitialFormState = (risk = null) => ({
+  estandar:
+    risk?.estandar && risk.estandar !== 'N/A' ? risk.estandar : '',
+  subestandar:
+    risk?.subestandar && risk.subestandar !== 'N/A' ? risk.subestandar : '',
+  title: risk?.title || risk?.riesgo || '',
+  description: risk?.description || risk?.descripcion || '',
+  category: risk?.category || risk?.categoria || 'Operacional',
+  causa: risk?.causa || '',
+  consecuencia: risk?.consecuencia || risk?.consec || '',
+  factor: risk?.factor || 'Interno',
+  probability: Number(risk?.probability ?? risk?.prob ?? 3),
+  impact: Number(risk?.impact ?? risk?.impacto ?? 3),
+  responsible: risk?.responsible || '',
+  status: risk?.status || 'Abierto',
+  plan: risk?.plan || '',
+});
 
-export function NewRiskModal({ isOpen, onClose, onAddRisk }) {
+export function NewRiskModal({
+  isOpen,
+  onClose,
+  onAddRisk,
+  onUpdateRisk,
+  editingRisk = null,
+}) {
   const { estandares = [], subestandares = [] } = useRiskContext();
-  const [formData, setFormData] = useState(INITIAL_FORM_STATE);
+  const [formData, setFormData] = useState(() =>
+    getInitialFormState(editingRisk)
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -63,33 +73,46 @@ export function NewRiskModal({ isOpen, onClose, onAddRisk }) {
       (s) => s.codigo_subestandar === formData.subestandar
     );
 
+    const payload = {
+      ...formData,
+      estandar: formData.estandar,
+      subestandar: formData.subestandar,
+      subestandar_id: matchedSub?.id ?? editingRisk?.subestandar_id ?? undefined,
+      title: formData.title.trim(),
+      riesgo: formData.title.trim(),
+      description: formData.description.trim() || formData.title.trim(),
+      descripcion: formData.description.trim() || formData.title.trim(),
+      causa: formData.causa.trim() || 'Causa bajo evaluación técnica',
+      consecuencia:
+        formData.consecuencia.trim() ||
+        'Impacto potencial en la continuidad operativa',
+      consec:
+        formData.consecuencia.trim() ||
+        'Impacto potencial en la continuidad operativa',
+      probability: Number(formData.probability),
+      prob: Number(formData.probability),
+      impact: Number(formData.impact),
+      impacto: Number(formData.impact),
+      nivel: currentSeverity.label,
+    };
+
     setIsSubmitting(true);
     try {
-      await onAddRisk({
-        ...formData,
-        estandar: formData.estandar,
-        subestandar: formData.subestandar,
-        subestandar_id: matchedSub?.id ?? undefined,
-        title: formData.title.trim(),
-        riesgo: formData.title.trim(),
-        description: formData.description.trim() || formData.title.trim(),
-        descripcion: formData.description.trim() || formData.title.trim(),
-        causa: formData.causa.trim() || 'Causa bajo evaluación técnica',
-        consecuencia:
-          formData.consecuencia.trim() || 'Impacto potencial en la continuidad operativa',
-        consec:
-          formData.consecuencia.trim() || 'Impacto potencial en la continuidad operativa',
-        probability: Number(formData.probability),
-        prob: Number(formData.probability),
-        impact: Number(formData.impact),
-        impacto: Number(formData.impact),
-        nivel: currentSeverity.label,
-      });
+      if (editingRisk && onUpdateRisk) {
+        await onUpdateRisk(editingRisk.id, payload);
+      } else {
+        await onAddRisk(payload);
+      }
 
-      setFormData(INITIAL_FORM_STATE);
+      setFormData(getInitialFormState(null));
       onClose();
     } catch (err) {
-      setErrorMessage(err.message || 'No se pudo registrar el riesgo.');
+      setErrorMessage(
+        err.message ||
+          (editingRisk
+            ? 'No se pudo actualizar el riesgo.'
+            : 'No se pudo registrar el riesgo.')
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -99,7 +122,9 @@ export function NewRiskModal({ isOpen, onClose, onAddRisk }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs overflow-y-auto">
       <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-slate-100 my-8 max-h-[92vh] overflow-y-auto">
         <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-          <h3 className="text-lg font-bold text-slate-900">Registrar Nuevo Riesgo</h3>
+          <h3 className="text-lg font-bold text-slate-900">
+            {editingRisk ? 'Editar Riesgo' : 'Registrar Nuevo Riesgo'}
+          </h3>
           <button
             type="button"
             onClick={onClose}
@@ -353,7 +378,9 @@ export function NewRiskModal({ isOpen, onClose, onAddRisk }) {
                   <span>Guardando...</span>
                 </>
               ) : (
-                <span>Guardar Riesgo</span>
+                <span>
+                  {editingRisk ? 'Guardar Cambios' : 'Guardar Riesgo'}
+                </span>
               )}
             </button>
           </div>
