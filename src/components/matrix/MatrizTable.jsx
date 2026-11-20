@@ -38,7 +38,7 @@ export function MatrizTable({
             {/* Encabezado Nivel 1: Las 3 Etapas de la Matriz */}
             <tr className="border-b border-slate-200">
               <th
-                colSpan={10}
+                colSpan={11}
                 className="bg-indigo-700 text-white py-3 px-4 text-center font-bold tracking-wider uppercase text-xs border-r-2 border-indigo-800"
               >
                 <div className="flex items-center justify-center gap-1.5">
@@ -69,11 +69,14 @@ export function MatrizTable({
               </th>
             </tr>
 
-            {/* Encabezado Nivel 2: Columnas Específicas del Nuevo Formato */}
+            {/* Encabezado Nivel 2: Columnas Específicas (Estándar y Subestándar separados) */}
             <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 uppercase tracking-wider text-[11px]">
-              {/* === ETAPA 1 (10 columnas) === */}
+              {/* === ETAPA 1 (11 columnas) === */}
               <th className="py-3 px-2.5 w-20 text-center border-r border-slate-200 bg-indigo-50/70 text-indigo-950">
-                Numeral
+                Estándar
+              </th>
+              <th className="py-3 px-2.5 w-24 text-center border-r border-slate-200 bg-indigo-50/70 text-indigo-950">
+                Subestándar
               </th>
               <th className="py-3 px-3 min-w-[150px] text-center border-r border-slate-200 bg-indigo-50/70 text-indigo-950">
                 Contexto
@@ -169,12 +172,23 @@ export function MatrizTable({
                 const imp3 = risk.impactoEtapa3 ?? 'N/A';
                 const evalEtapa3 = getMatrixZoneEvaluation(prob3, imp3);
 
-                const numeralDisplay =
-                  risk.numeral && risk.numeral !== 'N/A'
-                    ? risk.numeral
+                const estandarDisplay =
+                  risk.codigo_estandar && risk.codigo_estandar !== 'N/A'
+                    ? risk.codigo_estandar
+                    : risk.estandar && risk.estandar !== 'N/A'
+                    ? risk.estandar
+                    : risk.numeral && String(risk.numeral).includes('.')
+                    ? String(risk.numeral).split('.')[0]
+                    : 'N/A';
+
+                const subestandarDisplay =
+                  risk.codigo_subestandar && risk.codigo_subestandar !== 'N/A'
+                    ? risk.codigo_subestandar
                     : risk.subestandar && risk.subestandar !== 'N/A'
                     ? risk.subestandar
-                    : risk.estandar || 'N/A';
+                    : risk.numeral && risk.numeral !== 'N/A'
+                    ? risk.numeral
+                    : 'N/A';
 
                 const contextoDisplay =
                   risk.contexto ||
@@ -203,21 +217,21 @@ export function MatrizTable({
                     className="hover:bg-slate-50/90 transition-colors leading-relaxed"
                   >
                     {/* ================= ETAPA 1 ================= */}
-                    {/* 1. NUMERAL */}
+                    {/* 1. ESTÁNDAR */}
                     <td className="py-3.5 px-2.5 text-center border-r border-slate-100 font-mono bg-slate-50/30">
-                      <span
-                        className="inline-block px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold text-[11px]"
-                        title={
-                          risk.estandar && risk.estandar !== 'N/A'
-                            ? `Estándar: ${risk.estandar}`
-                            : 'Numeral'
-                        }
-                      >
-                        {numeralDisplay}
+                      <span className="inline-block px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold text-[11px]">
+                        {estandarDisplay}
                       </span>
                     </td>
 
-                    {/* 2. CONTEXTO */}
+                    {/* 2. SUBESTÁNDAR */}
+                    <td className="py-3.5 px-2.5 text-center border-r border-slate-100 font-mono bg-slate-50/30">
+                      <span className="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 font-bold text-[11px]">
+                        {subestandarDisplay}
+                      </span>
+                    </td>
+
+                    {/* 3. CONTEXTO */}
                     <td className="py-3.5 px-3 text-center border-r border-slate-100">
                       <span
                         className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10.5px] font-bold border ${
@@ -232,14 +246,14 @@ export function MatrizTable({
                       </span>
                     </td>
 
-                    {/* 3. PROCESO */}
+                    {/* 4. PROCESO */}
                     <td className="py-3.5 px-3 border-r border-slate-100 text-slate-800 font-semibold">
                       <p className="text-[11.5px] leading-snug">
                         {procesoDisplay}
                       </p>
                     </td>
 
-                    {/* 4. RIESGO */}
+                    {/* 5. RIESGO */}
                     <td className="py-3.5 px-3.5 border-r border-slate-100">
                       <div className="font-bold text-slate-900 text-xs leading-snug">
                         {risk.title}
@@ -252,21 +266,21 @@ export function MatrizTable({
                         )}
                     </td>
 
-                    {/* 5. CAUSAS */}
+                    {/* 6. CAUSAS */}
                     <td className="py-3.5 px-3.5 border-r border-slate-100 text-slate-700 bg-slate-50/20">
                       <p className="text-[11.5px] font-medium leading-normal">
                         {risk.causa || 'N/A'}
                       </p>
                     </td>
 
-                    {/* 6. CONSECUENCIAS */}
+                    {/* 7. CONSECUENCIAS */}
                     <td className="py-3.5 px-3.5 border-r border-slate-100 text-slate-700">
                       <p className="text-[11.5px] font-medium leading-normal">
                         {risk.consecuencia || 'N/A'}
                       </p>
                     </td>
 
-                    {/* 7. PROBABILIDAD (Etapa 1) */}
+                    {/* 8. PROBABILIDAD (Etapa 1) */}
                     <td className="py-3.5 px-2.5 text-center border-r border-slate-100 bg-indigo-50/15">
                       <div className="inline-flex flex-col items-center">
                         <span className="text-xs font-bold text-slate-900">
@@ -278,7 +292,7 @@ export function MatrizTable({
                       </div>
                     </td>
 
-                    {/* 8. IMPACTO (Etapa 1) */}
+                    {/* 9. IMPACTO (Etapa 1) */}
                     <td className="py-3.5 px-2.5 text-center border-r border-slate-100 bg-indigo-50/15">
                       <div className="inline-flex flex-col items-center">
                         <span className="text-xs font-bold text-slate-900">
@@ -290,14 +304,14 @@ export function MatrizTable({
                       </div>
                     </td>
 
-                    {/* 9. GRADO RIESGO (Etapa 1) */}
+                    {/* 10. GRADO RIESGO (Etapa 1) */}
                     <td className="py-3.5 px-2.5 text-center border-r border-slate-100 bg-indigo-50/20">
                       <span className="inline-flex items-center justify-center w-8 h-7 rounded-lg bg-white border border-slate-200 font-mono font-bold text-xs text-slate-900 shadow-2xs">
                         {evalEtapa1.hasValue ? evalEtapa1.score : 'N/A'}
                       </span>
                     </td>
 
-                    {/* 10. ZONA DE RIESGO (Etapa 1) */}
+                    {/* 11. ZONA DE RIESGO (Etapa 1) */}
                     <td className="py-3.5 px-3 text-center border-r-2 border-indigo-200 bg-indigo-50/20">
                       {evalEtapa1.hasValue ? (
                         <Badge
@@ -314,7 +328,7 @@ export function MatrizTable({
                     </td>
 
                     {/* ================= ETAPA 2 ================= */}
-                    {/* 11. CONTROLES IMPLEMENTADOS */}
+                    {/* 12. CONTROLES IMPLEMENTADOS */}
                     <td className="py-3.5 px-3.5 border-r border-slate-100 text-slate-700 bg-amber-50/10">
                       {!controlesImplDisplay || controlesImplDisplay === 'N/A' ? (
                         <span className="text-slate-400 italic font-mono text-[11px]">
@@ -327,7 +341,7 @@ export function MatrizTable({
                       )}
                     </td>
 
-                    {/* 12. PROBABILIDAD (Etapa 2) */}
+                    {/* 13. PROBABILIDAD (Etapa 2) */}
                     <td className="py-3.5 px-2.5 text-center border-r border-slate-100 bg-amber-50/20">
                       {prob2 === 'N/A' || prob2 === '' ? (
                         <span className="text-slate-400 italic font-mono text-[11px]">
@@ -345,7 +359,7 @@ export function MatrizTable({
                       )}
                     </td>
 
-                    {/* 13. IMPACTO (Etapa 2) */}
+                    {/* 14. IMPACTO (Etapa 2) */}
                     <td className="py-3.5 px-2.5 text-center border-r border-slate-100 bg-amber-50/20">
                       {imp2 === 'N/A' || imp2 === '' ? (
                         <span className="text-slate-400 italic font-mono text-[11px]">
@@ -363,7 +377,7 @@ export function MatrizTable({
                       )}
                     </td>
 
-                    {/* 14. GRADO RIESGO (Etapa 2) */}
+                    {/* 15. GRADO RIESGO (Etapa 2) */}
                     <td className="py-3.5 px-2.5 text-center border-r border-slate-100 bg-amber-50/20">
                       {evalEtapa2.hasValue ? (
                         <span className="inline-flex items-center justify-center w-8 h-7 rounded-lg bg-white border border-amber-200 font-mono font-bold text-xs text-slate-900 shadow-2xs">
@@ -376,7 +390,7 @@ export function MatrizTable({
                       )}
                     </td>
 
-                    {/* 15. ZONA DE RIESGO (Etapa 2) */}
+                    {/* 16. ZONA DE RIESGO (Etapa 2) */}
                     <td className="py-3.5 px-3 text-center border-r-2 border-amber-200 bg-amber-50/20">
                       {evalEtapa2.hasValue ? (
                         <Badge
@@ -393,7 +407,7 @@ export function MatrizTable({
                     </td>
 
                     {/* ================= ETAPA 3 ================= */}
-                    {/* 16. CONTROLES COMPLEMENTARIOS */}
+                    {/* 17. CONTROLES COMPLEMENTARIOS */}
                     <td className="py-3.5 px-3.5 border-r border-slate-100 text-slate-700 bg-emerald-50/10">
                       {!controlesCompDisplay || controlesCompDisplay === 'N/A' ? (
                         <span className="text-slate-400 italic font-mono text-[11px]">
@@ -406,7 +420,7 @@ export function MatrizTable({
                       )}
                     </td>
 
-                    {/* 17. PROBABILIDAD (Etapa 3) */}
+                    {/* 18. PROBABILIDAD (Etapa 3) */}
                     <td className="py-3.5 px-2.5 text-center border-r border-slate-100 bg-emerald-50/20">
                       {prob3 === 'N/A' || prob3 === '' ? (
                         <span className="text-slate-400 italic font-mono text-[11px]">
@@ -424,7 +438,7 @@ export function MatrizTable({
                       )}
                     </td>
 
-                    {/* 18. IMPACTO (Etapa 3) */}
+                    {/* 19. IMPACTO (Etapa 3) */}
                     <td className="py-3.5 px-2.5 text-center border-r border-slate-100 bg-emerald-50/20">
                       {imp3 === 'N/A' || imp3 === '' ? (
                         <span className="text-slate-400 italic font-mono text-[11px]">
@@ -442,7 +456,7 @@ export function MatrizTable({
                       )}
                     </td>
 
-                    {/* 19. GRADO RIESGO (Etapa 3) */}
+                    {/* 20. GRADO RIESGO (Etapa 3) */}
                     <td className="py-3.5 px-2.5 text-center border-r border-slate-100 bg-emerald-50/20">
                       {evalEtapa3.hasValue ? (
                         <span className="inline-flex items-center justify-center w-8 h-7 rounded-lg bg-white border border-emerald-200 font-mono font-bold text-xs text-slate-900 shadow-2xs">
@@ -455,7 +469,7 @@ export function MatrizTable({
                       )}
                     </td>
 
-                    {/* 20. ZONA DE RIESGO (Etapa 3) */}
+                    {/* 21. ZONA DE RIESGO (Etapa 3) */}
                     <td className="py-3.5 px-3 text-center border-r border-slate-100 bg-emerald-50/20">
                       {evalEtapa3.hasValue ? (
                         <Badge
@@ -471,7 +485,7 @@ export function MatrizTable({
                       )}
                     </td>
 
-                    {/* 21. SEGUIMIENTO Y REVISIÓN DE RIESGOS RESIDUALES */}
+                    {/* 22. SEGUIMIENTO Y REVISIÓN DE RIESGOS RESIDUALES */}
                     <td className="py-3.5 px-3.5 border-r border-slate-100 text-slate-700 bg-emerald-50/10">
                       {!seguimientoDisplay || seguimientoDisplay === 'N/A' ? (
                         <span className="text-slate-400 italic font-mono text-[11px]">
@@ -484,7 +498,7 @@ export function MatrizTable({
                       )}
                     </td>
 
-                    {/* 22. RESPONSABLE */}
+                    {/* 23. RESPONSABLE */}
                     <td className="py-3.5 px-3 border-r-2 border-emerald-200 text-slate-800 bg-emerald-50/15">
                       {!responsableDisplay || responsableDisplay === 'N/A' ? (
                         <span className="text-slate-400 italic font-mono text-[11px]">
@@ -524,7 +538,7 @@ export function MatrizTable({
             ) : (
               <tr>
                 <td
-                  colSpan={23}
+                  colSpan={24}
                   className="py-12 text-center text-slate-500 bg-white"
                 >
                   <div className="flex flex-col items-center justify-center gap-2">

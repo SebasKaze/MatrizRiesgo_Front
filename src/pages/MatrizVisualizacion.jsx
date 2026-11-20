@@ -17,27 +17,71 @@ const DEFAULT_FECHA_ANALISIS = new Date().toISOString().split('T')[0];
 const MATRICES_STORAGE_KEY = 'matrices_empresa_storage';
 const getMatrizDatosStorageKey = (matrizId) => `matriz_datos_${matrizId}`;
 
-// Transforma un riesgo del catálogo general (o de matriz_datos guardados) al formato de 3 Etapas de la matriz
-function mapCatalogRiskToMatrixRow(r, idx = 0) {
+// Transforma un riesgo del catálogo general (proveniente de /api/riesgos/verriesgos o /api/riesgos/por-estandares)
+// o de matriz_datos guardados al formato de 3 Etapas con Estándar y Subestándar separados
+function mapCatalogRiskToMatrixRow(
+  r,
+  idx = 0,
+  { estandares = [], subestandares = [] } = {}
+) {
+  const rawEstCode =
+    r.codigo_estandar && r.codigo_estandar !== 'N/A'
+      ? String(r.codigo_estandar).trim()
+      : r.estandar && r.estandar !== 'N/A'
+      ? String(r.estandar).trim()
+      : '';
+
+  const rawSubCode =
+    r.codigo_subestandar && r.codigo_subestandar !== 'N/A'
+      ? String(r.codigo_subestandar).trim()
+      : r.subestandar && r.subestandar !== 'N/A'
+      ? String(r.subestandar).trim()
+      : '';
+
+  // Resolver por subestandar_id / estandar_id si provienen de la BD
+  const matchedSub =
+    (r.subestandar_id !== undefined &&
+      r.subestandar_id !== null &&
+      subestandares.find((s) => String(s.id) === String(r.subestandar_id))) ||
+    (rawSubCode &&
+      subestandares.find(
+        (s) =>
+          String(s.codigo_subestandar).trim().toLowerCase() ===
+          rawSubCode.toLowerCase()
+      )) ||
+    null;
+
+  const targetEstId = r.estandar_id ?? matchedSub?.estandar_id ?? null;
+  const matchedEst =
+    (targetEstId !== undefined &&
+      targetEstId !== null &&
+      estandares.find((e) => String(e.id) === String(targetEstId))) ||
+    (rawEstCode &&
+      estandares.find(
+        (e) =>
+          String(e.codigo_estandar).trim().toLowerCase() ===
+          rawEstCode.toLowerCase()
+      )) ||
+    null;
+
   const estandar =
-    r.codigo_estandar ||
-    r.estandar ||
+    rawEstCode ||
+    matchedSub?.codigo_estandar ||
+    matchedEst?.codigo_estandar ||
     (r.numeral && String(r.numeral).includes('.')
       ? String(r.numeral).split('.')[0]
+      : r.numeral && r.numeral !== 'N/A'
+      ? String(r.numeral)
       : 'N/A');
 
   const subestandar =
-    r.codigo_subestandar ||
-    r.subestandar ||
-    (r.subestandar_id ? String(r.subestandar_id) : 'N/A');
-
-  const numeral =
-    r.numeral ||
-    (subestandar && subestandar !== 'N/A'
-      ? subestandar
-      : estandar && estandar !== 'N/A'
-      ? estandar
-      : `1.${idx + 1}`);
+    rawSubCode ||
+    matchedSub?.codigo_subestandar ||
+    (r.numeral && r.numeral !== 'N/A'
+      ? String(r.numeral)
+      : r.subestandar_id
+      ? String(r.subestandar_id)
+      : 'N/A');
 
   const contexto =
     r.contexto ||
@@ -75,9 +119,12 @@ function mapCatalogRiskToMatrixRow(r, idx = 0) {
 
   return {
     id: r.id || `RSK-${idx + 1}`,
-    numeral,
+    estandar_id: r.estandar_id ?? matchedEst?.id ?? matchedSub?.estandar_id ?? null,
+    subestandar_id: r.subestandar_id ?? matchedSub?.id ?? null,
     estandar,
+    codigo_estandar: estandar,
     subestandar,
+    codigo_subestandar: subestandar,
     contexto,
     factor: r.factor || contexto,
     proceso,
@@ -197,7 +244,11 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
           : null;
 
         if (isMounted && rawDatos) {
-          setRisks(rawDatos.map((r, i) => mapCatalogRiskToMatrixRow(r, i)));
+          setRisks(
+            rawDatos.map((r, i) =>
+              mapCatalogRiskToMatrixRow(r, i, { estandares, subestandares })
+            )
+          );
           setHasUnsavedChanges(false);
           setIsLoadingDatos(false);
           return;
@@ -214,11 +265,17 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
         if (localDatos) {
           const parsed = JSON.parse(localDatos);
           if (Array.isArray(parsed)) {
-            setRisks(parsed.map((r, i) => mapCatalogRiskToMatrixRow(r, i)));
+            setRisks(
+              parsed.map((r, i) =>
+                mapCatalogRiskToMatrixRow(r, i, { estandares, subestandares })
+              )
+            );
           }
         } else if (Array.isArray(activeMatriz.datos)) {
           setRisks(
-            activeMatriz.datos.map((r, i) => mapCatalogRiskToMatrixRow(r, i))
+            activeMatriz.datos.map((r, i) =>
+              mapCatalogRiskToMatrixRow(r, i, { estandares, subestandares })
+            )
           );
         }
         setHasUnsavedChanges(false);
@@ -234,7 +291,7 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
     return () => {
       isMounted = false;
     };
-  }, [activeMatriz]);
+  }, [activeMatriz, estandares, subestandares]);
 
   const handleIdentificadorChange = (val) => {
     setIdentificador(val);
@@ -259,7 +316,7 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
     );
 
     const mappedRows = associatedRisks.map((r, idx) =>
-      mapCatalogRiskToMatrixRow(r, idx)
+      mapCatalogRiskToMatrixRow(r, idx, { estandares, subestandares })
     );
 
     setRisks(mappedRows);
@@ -292,9 +349,10 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
   const [editingRisk, setEditingRisk] = useState(null);
 
   const [formData, setFormData] = useState({
-    numeral: '',
     estandar: 'N/A',
+    codigo_estandar: 'N/A',
     subestandar: 'N/A',
+    codigo_subestandar: 'N/A',
     contexto: 'Contexto interno / Externo',
     factor: 'Contexto interno / Externo',
     proceso: 'Análisis de riesgo',
@@ -324,9 +382,10 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
   const handleOpenCreateModal = () => {
     setEditingRisk(null);
     setFormData({
-      numeral: '',
       estandar: '',
+      codigo_estandar: '',
       subestandar: '',
+      codigo_subestandar: '',
       contexto: 'Contexto interno / Externo',
       factor: 'Contexto interno / Externo',
       proceso: 'Análisis de riesgo',
@@ -357,11 +416,22 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
 
   const handleOpenEditModal = (risk) => {
     setEditingRisk(risk);
-    const numeralVal =
-      risk.numeral ||
-      (risk.subestandar && risk.subestandar !== 'N/A'
+    const estVal =
+      risk.codigo_estandar && risk.codigo_estandar !== 'N/A'
+        ? risk.codigo_estandar
+        : risk.estandar && risk.estandar !== 'N/A'
+        ? risk.estandar
+        : risk.numeral && String(risk.numeral).includes('.')
+        ? String(risk.numeral).split('.')[0]
+        : 'N/A';
+
+    const subVal =
+      risk.codigo_subestandar && risk.codigo_subestandar !== 'N/A'
+        ? risk.codigo_subestandar
+        : risk.subestandar && risk.subestandar !== 'N/A'
         ? risk.subestandar
-        : risk.estandar || '');
+        : risk.numeral || 'N/A';
+
     const contextoVal =
       risk.contexto ||
       (risk.factor === 'Interno' || risk.factor === 'Externo'
@@ -378,9 +448,10 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
     const imp3Val = risk.impactoEtapa3 ?? 'N/A';
 
     setFormData({
-      numeral: numeralVal,
-      estandar: risk.estandar || 'N/A',
-      subestandar: risk.subestandar || 'N/A',
+      estandar: estVal,
+      codigo_estandar: estVal,
+      subestandar: subVal,
+      codigo_subestandar: subVal,
       contexto: contextoVal,
       factor: risk.factor || contextoVal,
       proceso: procesoVal,
@@ -426,23 +497,34 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
       formData.impactoEtapa3
     );
 
-    const derivedEstandar =
+    const cleanEstandar =
       formData.estandar && formData.estandar !== 'N/A'
-        ? formData.estandar
-        : formData.numeral && String(formData.numeral).includes('.')
-        ? String(formData.numeral).split('.')[0]
-        : formData.numeral || 'N/A';
+        ? String(formData.estandar).trim()
+        : 'N/A';
 
-    const derivedSubestandar =
+    const cleanSubestandar =
       formData.subestandar && formData.subestandar !== 'N/A'
-        ? formData.subestandar
-        : formData.numeral || 'N/A';
+        ? String(formData.subestandar).trim()
+        : 'N/A';
+
+    const matchedEst = estandares.find(
+      (est) => est.codigo_estandar === cleanEstandar
+    );
+    const matchedSub = subestandares.find(
+      (sub) =>
+        sub.codigo_subestandar === cleanSubestandar &&
+        (sub.codigo_estandar === cleanEstandar ||
+          (matchedEst && String(sub.estandar_id) === String(matchedEst.id)))
+    );
 
     const updatedFields = {
       ...formData,
-      numeral: formData.numeral.trim() || derivedSubestandar,
-      estandar: derivedEstandar,
-      subestandar: derivedSubestandar,
+      estandar_id: matchedEst?.id ?? editingRisk?.estandar_id ?? null,
+      subestandar_id: matchedSub?.id ?? editingRisk?.subestandar_id ?? null,
+      estandar: cleanEstandar,
+      codigo_estandar: cleanEstandar,
+      subestandar: cleanSubestandar,
+      codigo_subestandar: cleanSubestandar,
       contexto: formData.contexto || 'Contexto interno / Externo',
       factor:
         formData.contexto === 'Interno' || formData.contexto === 'Externo'
@@ -549,7 +631,7 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
 
   // Guardar la Matriz en la BD:
   // Paso 1: Guardar cabecera en tabla `matriz` (empresa_id, identificador, version_matriz)
-  // Paso 2: Guardar contenido JSONB con las 3 etapas en tabla `matriz_datos` (matriz_id, datos)
+  // Paso 2: Guardar contenido JSONB con las 3 etapas (y Estándar/Subestándar separados) en tabla `matriz_datos`
   const handleSaveMatrizToDatabase = async ({ silentSuccess = false } = {}) => {
     setSaveFeedback(null);
 
@@ -577,6 +659,15 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
       const imp3 = r.impactoEtapa3 ?? 'N/A';
       const eval3 = getMatrixZoneEvaluation(prob3, imp3);
 
+      const estCode =
+        r.codigo_estandar && r.codigo_estandar !== 'N/A'
+          ? r.codigo_estandar
+          : r.estandar || 'N/A';
+      const subCode =
+        r.codigo_subestandar && r.codigo_subestandar !== 'N/A'
+          ? r.codigo_subestandar
+          : r.subestandar || 'N/A';
+
       const controlesImpl = r.controlesImplementados || r.planAccion || 'N/A';
       const controlesComp = r.controlesComplementarios || r.mitigacion || 'N/A';
       const contextoVal =
@@ -585,13 +676,12 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
 
       return {
         id: r.id,
-        numeral:
-          r.numeral ||
-          (r.subestandar && r.subestandar !== 'N/A'
-            ? r.subestandar
-            : r.estandar || 'N/A'),
-        estandar: r.estandar || 'N/A',
-        subestandar: r.subestandar || 'N/A',
+        estandar_id: r.estandar_id ?? null,
+        subestandar_id: r.subestandar_id ?? null,
+        estandar: estCode,
+        codigo_estandar: estCode,
+        subestandar: subCode,
+        codigo_subestandar: subCode,
         contexto: contextoVal,
         factor: r.factor || contextoVal,
         proceso: procesoVal,
@@ -848,10 +938,10 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
     });
     risks.forEach((r) => {
       const code = String(
-        r.estandar && r.estandar !== 'N/A'
+        r.codigo_estandar && r.codigo_estandar !== 'N/A'
+          ? r.codigo_estandar
+          : r.estandar && r.estandar !== 'N/A'
           ? r.estandar
-          : r.numeral && String(r.numeral).includes('.')
-          ? String(r.numeral).split('.')[0]
           : ''
       ).trim();
       if (code && code !== 'N/A' && !map.has(code)) {
@@ -869,20 +959,23 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
     );
   }, [estandares, risks]);
 
-  // Filtrado reactivo de la lista (compatible con los campos de las 3 etapas)
+  // Filtrado reactivo de la lista (con Estándar y Subestándar separados)
   const filteredRisks = useMemo(() => {
     return risks.filter((risk) => {
       const term = String(searchTerm || '').toLowerCase();
       const matchesSearch =
-        String(risk.numeral || '').toLowerCase().includes(term) ||
+        String(risk.estandar || risk.codigo_estandar || '')
+          .toLowerCase()
+          .includes(term) ||
+        String(risk.subestandar || risk.codigo_subestandar || '')
+          .toLowerCase()
+          .includes(term) ||
         String(risk.contexto || '').toLowerCase().includes(term) ||
         String(risk.proceso || '').toLowerCase().includes(term) ||
         String(risk.title || '').toLowerCase().includes(term) ||
         String(risk.description || '').toLowerCase().includes(term) ||
         String(risk.causa || '').toLowerCase().includes(term) ||
         String(risk.consecuencia || '').toLowerCase().includes(term) ||
-        String(risk.estandar || '').toLowerCase().includes(term) ||
-        String(risk.subestandar || '').toLowerCase().includes(term) ||
         String(risk.controlesImplementados || risk.planAccion || '')
           .toLowerCase()
           .includes(term) ||
@@ -894,11 +987,9 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
         String(risk.id ?? '').toLowerCase().includes(term);
 
       const riskEstCode = String(
-        risk.estandar && risk.estandar !== 'N/A'
-          ? risk.estandar
-          : risk.numeral && String(risk.numeral).includes('.')
-          ? String(risk.numeral).split('.')[0]
-          : risk.numeral || ''
+        risk.codigo_estandar && risk.codigo_estandar !== 'N/A'
+          ? risk.codigo_estandar
+          : risk.estandar || ''
       )
         .trim()
         .toLowerCase();
@@ -971,7 +1062,7 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
         setTreatmentFilter={setTreatmentFilter}
       />
 
-      {/* Tabla Principal de la Matriz con las 3 Etapas */}
+      {/* Tabla Principal de la Matriz con las 3 Etapas y Estándar/Subestándar separados */}
       <MatrizTable
         risks={risks}
         filteredRisks={filteredRisks}

@@ -58,7 +58,7 @@ export function MatrizRiskModal({
             <div>
               <h3 className="text-lg font-bold text-slate-900 leading-tight">
                 {editingRisk
-                  ? `Modificar Riesgo de la Matriz (${editingRisk.numeral || editingRisk.id})`
+                  ? `Modificar Riesgo de la Matriz (${editingRisk.subestandar || editingRisk.estandar || editingRisk.id})`
                   : 'Agregar Nuevo Riesgo a la Matriz (3 Etapas)'}
               </h3>
               <p className="text-xs text-slate-500">
@@ -89,24 +89,23 @@ export function MatrizRiskModal({
               Etapa 1. Identificación, Contexto y Evaluación de Riesgo Inicial
             </h4>
 
-            {/* Estándar, Subestándar y Numeral */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* Estándar y Subestándar (2 columnas separadas) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                  Estándar Asociado
+                  Estándar *
                 </label>
                 <select
+                  required
                   value={formData.estandar === 'N/A' ? '' : formData.estandar}
                   onChange={(e) => {
                     const nextEst = e.target.value || 'N/A';
                     setFormData({
                       ...formData,
                       estandar: nextEst,
+                      codigo_estandar: nextEst,
                       subestandar: '',
-                      numeral:
-                        nextEst !== 'N/A'
-                          ? nextEst
-                          : formData.numeral,
+                      codigo_subestandar: '',
                     });
                   }}
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -118,6 +117,7 @@ export function MatrizRiskModal({
                       value={est.codigo_estandar}
                     >
                       {est.codigo_estandar}
+                      {est.descripcion ? ` — ${est.descripcion}` : ''}
                     </option>
                   ))}
                 </select>
@@ -125,9 +125,10 @@ export function MatrizRiskModal({
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                  Subestándar
+                  Subestándar *
                 </label>
                 <select
+                  required
                   disabled={!formData.estandar || formData.estandar === 'N/A'}
                   value={
                     formData.subestandar === 'N/A' ? '' : formData.subestandar
@@ -137,8 +138,7 @@ export function MatrizRiskModal({
                     setFormData({
                       ...formData,
                       subestandar: nextSub,
-                      numeral:
-                        nextSub !== 'N/A' ? nextSub : formData.numeral,
+                      codigo_subestandar: nextSub,
                     });
                   }}
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -154,25 +154,10 @@ export function MatrizRiskModal({
                       value={sub.codigo_subestandar}
                     >
                       {sub.codigo_subestandar}
+                      {sub.descripcion ? ` — ${sub.descripcion}` : ''}
                     </option>
                   ))}
                 </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                  Numeral *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.numeral}
-                  onChange={(e) =>
-                    setFormData({ ...formData, numeral: e.target.value })
-                  }
-                  placeholder="Ej. 1.1"
-                  className="w-full px-3.5 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
               </div>
             </div>
 
