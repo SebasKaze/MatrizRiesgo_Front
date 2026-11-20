@@ -68,3 +68,15 @@ CREATE TABLE matriz_datos (
     datos JSONB NOT NULL DEFAULT '[]'::jsonb, -- Arreglo JSON con las filas de la matriz y su tratamiento
     CONSTRAINT fk_matriz_datos_matriz FOREIGN KEY (matriz_id) REFERENCES matriz(id) ON DELETE CASCADE
 );
+
+CREATE TABLE noticias (
+    id SERIAL PRIMARY KEY,
+    nombre VARCHAR(255) NOT NULL,
+    area VARCHAR(150) NOT NULL,
+    fecha DATE NOT NULL DEFAULT CURRENT_DATE,
+    texto TEXT NOT NULL,
+    estandar_id INTEGER,
+    codigo_estandar VARCHAR(50) NOT NULL,
+    fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_noticia_estandar FOREIGN KEY (estandar_id) REFERENCES estandar(id) ON DELETE SET NULL
+);

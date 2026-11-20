@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import {
-  ShieldAlert,
   Lock,
   Mail,
   Eye,
@@ -38,8 +37,12 @@ export function LoginPage() {
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <div className="mx-auto w-14 h-14 rounded-2xl bg-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/20 mb-4">
-          <ShieldAlert className="w-8 h-8" />
+        <div className="mx-auto w-14 h-14 rounded-2xl bg-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/20 mb-4 overflow-hidden">
+          <img
+            src="/icono.png"
+            alt="Logo Matriz de Riesgos"
+            className="w-10 h-10 object-contain"
+          />
         </div>
         <h2 className="text-2xl font-bold text-white tracking-tight">
           Matriz de Riesgos

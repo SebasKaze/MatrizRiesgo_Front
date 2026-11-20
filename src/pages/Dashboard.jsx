@@ -205,10 +205,6 @@ export function Dashboard({
                 <h1 className="text-xl font-bold text-slate-900">
                   Sistema de Gestión de Matriz de Riesgos
                 </h1>
-                <span className="inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                  <Building2 className="w-3.5 h-3.5" />
-                  Empresa #{empresaId}
-                </span>
               </div>
               <p className="text-sm text-slate-600 mt-1.5 max-w-3xl leading-relaxed">
                 Esta plataforma permite a tu organización identificar, analizar,

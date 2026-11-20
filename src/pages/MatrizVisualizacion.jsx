@@ -4,7 +4,7 @@ import { useAuth } from '../hooks/useAuth';
 import { api, tokenStorage } from '../services/api';
 import { riskService } from '../services/riskService';
 import { ACTIVE_MATRIZ_STORAGE_KEY } from './Matrices';
-import { calculateRiskScore, getRiskSeverity } from '../utils/riskCalculations';
+import { getMatrixZoneEvaluation } from '../utils/riskCalculations';
 import { MatrizHeaderPanel } from '../components/matrix/MatrizHeaderPanel';
 import { MatrizFilterBar } from '../components/matrix/MatrizFilterBar';
 import { MatrizTable } from '../components/matrix/MatrizTable';
@@ -17,29 +17,103 @@ const DEFAULT_FECHA_ANALISIS = new Date().toISOString().split('T')[0];
 const MATRICES_STORAGE_KEY = 'matrices_empresa_storage';
 const getMatrizDatosStorageKey = (matrizId) => `matriz_datos_${matrizId}`;
 
-// Transforma un riesgo del catálogo general al formato enriquecido de la matriz
+// Transforma un riesgo del catálogo general (o de matriz_datos guardados) al formato de 3 Etapas de la matriz
 function mapCatalogRiskToMatrixRow(r, idx = 0) {
+  const estandar =
+    r.codigo_estandar ||
+    r.estandar ||
+    (r.numeral && String(r.numeral).includes('.')
+      ? String(r.numeral).split('.')[0]
+      : 'N/A');
+
+  const subestandar =
+    r.codigo_subestandar ||
+    r.subestandar ||
+    (r.subestandar_id ? String(r.subestandar_id) : 'N/A');
+
+  const numeral =
+    r.numeral ||
+    (subestandar && subestandar !== 'N/A'
+      ? subestandar
+      : estandar && estandar !== 'N/A'
+      ? estandar
+      : `1.${idx + 1}`);
+
+  const contexto =
+    r.contexto ||
+    (r.factor === 'Interno' || r.factor === 'Externo'
+      ? r.factor
+      : 'Contexto interno / Externo');
+
+  const proceso =
+    r.proceso || r.category || r.categoria || 'Análisis de riesgo';
+
+  const probability = Number(
+    r.probabilidadEtapa1 ?? r.prob ?? r.probability ?? 3
+  );
+  const impact = Number(r.impactoEtapa1 ?? r.impacto ?? r.impact ?? 3);
+  const eval1 = getMatrixZoneEvaluation(probability, impact);
+
+  const controlesImplementados =
+    r.controlesImplementados || r.planAccion || 'N/A';
+  const probabilidadEtapa2 =
+    r.probabilidadEtapa2 ?? r.nuevaProbabilidad ?? 'N/A';
+  const impactoEtapa2 = r.impactoEtapa2 ?? r.nuevoImpacto ?? 'N/A';
+  const eval2 = getMatrixZoneEvaluation(probabilidadEtapa2, impactoEtapa2);
+
+  const controlesComplementarios =
+    r.controlesComplementarios || r.mitigacion || 'N/A';
+  const probabilidadEtapa3 = r.probabilidadEtapa3 ?? 'N/A';
+  const impactoEtapa3 = r.impactoEtapa3 ?? 'N/A';
+  const eval3 = getMatrixZoneEvaluation(probabilidadEtapa3, impactoEtapa3);
+
+  const seguimientoRevision =
+    r.seguimientoRevision || r.seguimiento || 'N/A';
+  const responsable =
+    r.responsable ||
+    (r.responsible && r.responsible !== 'Asignado' ? r.responsible : 'N/A');
+
   return {
     id: r.id || `RSK-${idx + 1}`,
-    estandar: r.codigo_estandar || r.estandar || 'N/A',
-    subestandar:
-      r.codigo_subestandar ||
-      r.subestandar ||
-      (r.subestandar_id ? String(r.subestandar_id) : 'N/A'),
+    numeral,
+    estandar,
+    subestandar,
+    contexto,
+    factor: r.factor || contexto,
+    proceso,
+    category: proceso,
     title: r.riesgo || r.title || 'Sin título',
     description: r.descripcion || r.description || r.riesgo || r.title || '',
-    causa: r.causa || 'N/A',
-    consecuencia: r.consec || r.consecuencia || 'N/A',
-    factor: r.factor || 'Interno',
-    category: r.category || r.categoria || 'Operacional',
-    probability: Number(r.prob ?? r.probability ?? 3),
-    impact: Number(r.impacto ?? r.impact ?? 3),
+    causa: r.causas || r.causa || 'N/A',
+    consecuencia: r.consecuencias || r.consec || r.consecuencia || 'N/A',
+    // Etapa 1: Evaluación Inicial
+    probability,
+    impact,
+    gradoRiesgoEtapa1: eval1.score,
+    zonaRiesgoEtapa1: eval1.zona,
+    // Etapa 2: Controles Implementados y Reevaluación
+    controlesImplementados,
+    probabilidadEtapa2,
+    impactoEtapa2,
+    gradoRiesgoEtapa2: eval2.hasValue ? eval2.score : 'N/A',
+    zonaRiesgoEtapa2: eval2.hasValue ? eval2.zona : 'N/A',
+    // Etapa 3: Controles Complementarios, Riesgo Residual y Seguimiento
+    controlesComplementarios,
+    probabilidadEtapa3,
+    impactoEtapa3,
+    gradoRiesgoEtapa3: eval3.hasValue ? eval3.score : 'N/A',
+    zonaRiesgoEtapa3: eval3.hasValue ? eval3.zona : 'N/A',
+    seguimientoRevision,
+    responsable,
+    // Campos espejo para compatibilidad
     fechaAnalisis: r.fechaAnalisis || DEFAULT_FECHA_ANALISIS,
-    planAccion: r.planAccion || 'N/A',
-    mitigacion: r.mitigacion || 'N/A',
-    nuevaProbabilidad: r.nuevaProbabilidad ?? 'N/A',
-    nuevoImpacto: r.nuevoImpacto ?? 'N/A',
-    nuevoNivelRiesgo: r.nuevoNivelRiesgo || 'N/A',
+    planAccion: controlesImplementados,
+    mitigacion: controlesComplementarios,
+    nuevaProbabilidad: probabilidadEtapa2,
+    nuevoImpacto: impactoEtapa2,
+    nuevoNivelRiesgo: eval2.hasValue
+      ? `${eval2.zona} (${eval2.score})`
+      : r.nuevoNivelRiesgo || 'N/A',
     fechaTratamiento: r.fechaTratamiento || 'N/A',
   };
 }
@@ -209,24 +283,36 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
 
   // Filtros de visualización en tabla
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedEstandar, setSelectedEstandar] = useState('Todos');
   const [selectedFactor, setSelectedFactor] = useState('Todos');
   const [treatmentFilter, setTreatmentFilter] = useState('Todos');
 
-  // Estado para el modal de agregar o editar riesgo dentro de la matriz
+  // Estado para el modal de agregar o editar riesgo dentro de la matriz (3 Etapas)
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRisk, setEditingRisk] = useState(null);
 
   const [formData, setFormData] = useState({
+    numeral: '',
     estandar: 'N/A',
     subestandar: 'N/A',
+    contexto: 'Contexto interno / Externo',
+    factor: 'Contexto interno / Externo',
+    proceso: 'Análisis de riesgo',
+    category: 'Análisis de riesgo',
     title: '',
     description: '',
     causa: '',
     consecuencia: '',
-    factor: 'Interno',
-    category: 'Operacional',
-    probability: 3,
-    impact: 3,
+    probability: 2,
+    impact: 5,
+    controlesImplementados: 'N/A',
+    probabilidadEtapa2: 'N/A',
+    impactoEtapa2: 'N/A',
+    controlesComplementarios: 'N/A',
+    probabilidadEtapa3: 'N/A',
+    impactoEtapa3: 'N/A',
+    seguimientoRevision: 'N/A',
+    responsable: 'N/A',
     fechaAnalisis: DEFAULT_FECHA_ANALISIS,
     planAccion: 'N/A',
     mitigacion: 'N/A',
@@ -238,16 +324,27 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
   const handleOpenCreateModal = () => {
     setEditingRisk(null);
     setFormData({
+      numeral: '',
       estandar: '',
       subestandar: '',
+      contexto: 'Contexto interno / Externo',
+      factor: 'Contexto interno / Externo',
+      proceso: 'Análisis de riesgo',
+      category: 'Análisis de riesgo',
       title: '',
       description: '',
       causa: '',
       consecuencia: '',
-      factor: 'Interno',
-      category: 'Operacional',
-      probability: 3,
-      impact: 3,
+      probability: 2,
+      impact: 5,
+      controlesImplementados: 'N/A',
+      probabilidadEtapa2: 'N/A',
+      impactoEtapa2: 'N/A',
+      controlesComplementarios: 'N/A',
+      probabilidadEtapa3: 'N/A',
+      impactoEtapa3: 'N/A',
+      seguimientoRevision: 'N/A',
+      responsable: 'Staff y/o Comité de Seguridad OEA - Dirección',
       fechaAnalisis: DEFAULT_FECHA_ANALISIS,
       planAccion: 'N/A',
       mitigacion: 'N/A',
@@ -260,22 +357,53 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
 
   const handleOpenEditModal = (risk) => {
     setEditingRisk(risk);
+    const numeralVal =
+      risk.numeral ||
+      (risk.subestandar && risk.subestandar !== 'N/A'
+        ? risk.subestandar
+        : risk.estandar || '');
+    const contextoVal =
+      risk.contexto ||
+      (risk.factor === 'Interno' || risk.factor === 'Externo'
+        ? risk.factor
+        : 'Contexto interno / Externo');
+    const procesoVal = risk.proceso || risk.category || 'Análisis de riesgo';
+    const controlesImplVal =
+      risk.controlesImplementados ?? risk.planAccion ?? 'N/A';
+    const prob2Val = risk.probabilidadEtapa2 ?? risk.nuevaProbabilidad ?? 'N/A';
+    const imp2Val = risk.impactoEtapa2 ?? risk.nuevoImpacto ?? 'N/A';
+    const controlesCompVal =
+      risk.controlesComplementarios ?? risk.mitigacion ?? 'N/A';
+    const prob3Val = risk.probabilidadEtapa3 ?? 'N/A';
+    const imp3Val = risk.impactoEtapa3 ?? 'N/A';
+
     setFormData({
+      numeral: numeralVal,
       estandar: risk.estandar || 'N/A',
       subestandar: risk.subestandar || 'N/A',
+      contexto: contextoVal,
+      factor: risk.factor || contextoVal,
+      proceso: procesoVal,
+      category: procesoVal,
       title: risk.title || '',
       description: risk.description || '',
       causa: risk.causa || '',
       consecuencia: risk.consecuencia || '',
-      factor: risk.factor || 'Interno',
-      category: risk.category || 'Operacional',
       probability: Number(risk.probability) || 3,
       impact: Number(risk.impact) || 3,
+      controlesImplementados: controlesImplVal,
+      probabilidadEtapa2: prob2Val,
+      impactoEtapa2: imp2Val,
+      controlesComplementarios: controlesCompVal,
+      probabilidadEtapa3: prob3Val,
+      impactoEtapa3: imp3Val,
+      seguimientoRevision: risk.seguimientoRevision || 'N/A',
+      responsable: risk.responsable || 'N/A',
       fechaAnalisis: risk.fechaAnalisis || DEFAULT_FECHA_ANALISIS,
-      planAccion: risk.planAccion || 'N/A',
-      mitigacion: risk.mitigacion || 'N/A',
-      nuevaProbabilidad: risk.nuevaProbabilidad ?? 'N/A',
-      nuevoImpacto: risk.nuevoImpacto ?? 'N/A',
+      planAccion: controlesImplVal,
+      mitigacion: controlesCompVal,
+      nuevaProbabilidad: prob2Val,
+      nuevoImpacto: imp2Val,
       fechaTratamiento: risk.fechaTratamiento || 'N/A',
     });
     setIsModalOpen(true);
@@ -285,13 +413,74 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
     e.preventDefault();
     if (!formData.title.trim()) return;
 
-    let computedNuevoNivel = 'N/A';
-    const numProb = Number(formData.nuevaProbabilidad);
-    const numImp = Number(formData.nuevoImpacto);
-    if (!isNaN(numProb) && !isNaN(numImp) && numProb >= 1 && numImp >= 1) {
-      const score = numProb * numImp;
-      computedNuevoNivel = `${getRiskSeverity(score).label} (${score})`;
-    }
+    const eval1 = getMatrixZoneEvaluation(
+      formData.probability,
+      formData.impact
+    );
+    const eval2 = getMatrixZoneEvaluation(
+      formData.probabilidadEtapa2,
+      formData.impactoEtapa2
+    );
+    const eval3 = getMatrixZoneEvaluation(
+      formData.probabilidadEtapa3,
+      formData.impactoEtapa3
+    );
+
+    const derivedEstandar =
+      formData.estandar && formData.estandar !== 'N/A'
+        ? formData.estandar
+        : formData.numeral && String(formData.numeral).includes('.')
+        ? String(formData.numeral).split('.')[0]
+        : formData.numeral || 'N/A';
+
+    const derivedSubestandar =
+      formData.subestandar && formData.subestandar !== 'N/A'
+        ? formData.subestandar
+        : formData.numeral || 'N/A';
+
+    const updatedFields = {
+      ...formData,
+      numeral: formData.numeral.trim() || derivedSubestandar,
+      estandar: derivedEstandar,
+      subestandar: derivedSubestandar,
+      contexto: formData.contexto || 'Contexto interno / Externo',
+      factor:
+        formData.contexto === 'Interno' || formData.contexto === 'Externo'
+          ? formData.contexto
+          : 'Contexto interno / Externo',
+      proceso: formData.proceso.trim() || 'Análisis de riesgo',
+      category: formData.proceso.trim() || 'Análisis de riesgo',
+      title: formData.title.trim(),
+      description: formData.description.trim() || formData.title.trim(),
+      causa: formData.causa.trim() || 'N/A',
+      consecuencia: formData.consecuencia.trim() || 'N/A',
+      probability: Number(formData.probability),
+      impact: Number(formData.impact),
+      gradoRiesgoEtapa1: eval1.score,
+      zonaRiesgoEtapa1: eval1.zona,
+      controlesImplementados:
+        formData.controlesImplementados.trim() || 'N/A',
+      probabilidadEtapa2: formData.probabilidadEtapa2,
+      impactoEtapa2: formData.impactoEtapa2,
+      gradoRiesgoEtapa2: eval2.hasValue ? eval2.score : 'N/A',
+      zonaRiesgoEtapa2: eval2.hasValue ? eval2.zona : 'N/A',
+      controlesComplementarios:
+        formData.controlesComplementarios.trim() || 'N/A',
+      probabilidadEtapa3: formData.probabilidadEtapa3,
+      impactoEtapa3: formData.impactoEtapa3,
+      gradoRiesgoEtapa3: eval3.hasValue ? eval3.score : 'N/A',
+      zonaRiesgoEtapa3: eval3.hasValue ? eval3.zona : 'N/A',
+      seguimientoRevision: formData.seguimientoRevision.trim() || 'N/A',
+      responsable: formData.responsable.trim() || 'N/A',
+      // Espejos de compatibilidad
+      planAccion: formData.controlesImplementados.trim() || 'N/A',
+      mitigacion: formData.controlesComplementarios.trim() || 'N/A',
+      nuevaProbabilidad: formData.probabilidadEtapa2,
+      nuevoImpacto: formData.impactoEtapa2,
+      nuevoNivelRiesgo: eval2.hasValue
+        ? `${eval2.zona} (${eval2.score})`
+        : 'N/A',
+    };
 
     if (editingRisk) {
       setRisks((prev) =>
@@ -299,12 +488,7 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
           r.id === editingRisk.id
             ? {
                 ...r,
-                ...formData,
-                probability: Number(formData.probability),
-                impact: Number(formData.impact),
-                nuevaProbabilidad: formData.nuevaProbabilidad,
-                nuevoImpacto: formData.nuevoImpacto,
-                nuevoNivelRiesgo: computedNuevoNivel,
+                ...updatedFields,
               }
             : r
         )
@@ -312,13 +496,8 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
     } else {
       const newId = `RSK-MAT-${String(Date.now()).slice(-4)}`;
       const newRecord = {
-        ...formData,
+        ...updatedFields,
         id: newId,
-        probability: Number(formData.probability),
-        impact: Number(formData.impact),
-        nuevaProbabilidad: formData.nuevaProbabilidad,
-        nuevoImpacto: formData.nuevoImpacto,
-        nuevoNivelRiesgo: computedNuevoNivel,
       };
       setRisks((prev) => [newRecord, ...prev]);
     }
@@ -370,8 +549,7 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
 
   // Guardar la Matriz en la BD:
   // Paso 1: Guardar cabecera en tabla `matriz` (empresa_id, identificador, version_matriz)
-  // Paso 2: Guardar contenido JSONB en tabla `matriz_datos` (matriz_id, datos)
-  // Devuelve el ID de la matriz guardada (o null si ocurrió un error del servidor)
+  // Paso 2: Guardar contenido JSONB con las 3 etapas en tabla `matriz_datos` (matriz_id, datos)
   const handleSaveMatrizToDatabase = async ({ silentSuccess = false } = {}) => {
     setSaveFeedback(null);
 
@@ -382,45 +560,83 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
       setIdentificador(finalIdentificador);
     }
 
-    // Conservar el empresa_id original de la matriz (útil cuando Admin edita matrices de diferentes empresas)
     const empresaId = activeMatriz?.empresa_id ?? user?.empresa_id ?? 1;
     const minVersion = Number(baseVersionMatriz) || 1;
     const version = Math.max(minVersion, Number(versionMatriz) || minVersion);
 
-    // Si estamos actualizando una matriz existente y el usuario incrementó el número de versión,
-    // se registra una nueva matriz en la BD para conservar la versión anterior (ej. v1) y crear la nueva (ej. v2).
     const isCreatingNewVersionRecord = Boolean(
       currentMatrizId && version > minVersion
     );
 
     const datosJsonb = risks.map((r) => {
-      const score = calculateRiskScore(r.probability, r.impact);
-      const severity = getRiskSeverity(score);
+      const eval1 = getMatrixZoneEvaluation(r.probability, r.impact);
+      const prob2 = r.probabilidadEtapa2 ?? r.nuevaProbabilidad ?? 'N/A';
+      const imp2 = r.impactoEtapa2 ?? r.nuevoImpacto ?? 'N/A';
+      const eval2 = getMatrixZoneEvaluation(prob2, imp2);
+      const prob3 = r.probabilidadEtapa3 ?? 'N/A';
+      const imp3 = r.impactoEtapa3 ?? 'N/A';
+      const eval3 = getMatrixZoneEvaluation(prob3, imp3);
+
+      const controlesImpl = r.controlesImplementados || r.planAccion || 'N/A';
+      const controlesComp = r.controlesComplementarios || r.mitigacion || 'N/A';
+      const contextoVal =
+        r.contexto || r.factor || 'Contexto interno / Externo';
+      const procesoVal = r.proceso || r.category || 'Análisis de riesgo';
+
       return {
         id: r.id,
+        numeral:
+          r.numeral ||
+          (r.subestandar && r.subestandar !== 'N/A'
+            ? r.subestandar
+            : r.estandar || 'N/A'),
         estandar: r.estandar || 'N/A',
         subestandar: r.subestandar || 'N/A',
+        contexto: contextoVal,
+        factor: r.factor || contextoVal,
+        proceso: procesoVal,
+        category: procesoVal,
         title: r.title,
         riesgo: r.title,
         description: r.description || r.title,
         descripcion: r.description || r.title,
         causa: r.causa || 'N/A',
+        causas: r.causa || 'N/A',
         consecuencia: r.consecuencia || 'N/A',
+        consecuencias: r.consecuencia || 'N/A',
         consec: r.consecuencia || 'N/A',
-        factor: r.factor || 'Interno',
-        category: r.category || 'Operacional',
+        // Etapa 1
         probability: Number(r.probability),
         prob: Number(r.probability),
         impact: Number(r.impact),
         impacto: Number(r.impact),
-        nivel: severity.label,
-        score,
+        gradoRiesgoEtapa1: eval1.score,
+        zonaRiesgoEtapa1: eval1.zona,
+        score: eval1.score,
+        nivel: eval1.zona,
+        // Etapa 2
+        controlesImplementados: controlesImpl,
+        probabilidadEtapa2: prob2,
+        impactoEtapa2: imp2,
+        gradoRiesgoEtapa2: eval2.hasValue ? eval2.score : 'N/A',
+        zonaRiesgoEtapa2: eval2.hasValue ? eval2.zona : 'N/A',
+        // Etapa 3
+        controlesComplementarios: controlesComp,
+        probabilidadEtapa3: prob3,
+        impactoEtapa3: imp3,
+        gradoRiesgoEtapa3: eval3.hasValue ? eval3.score : 'N/A',
+        zonaRiesgoEtapa3: eval3.hasValue ? eval3.zona : 'N/A',
+        seguimientoRevision: r.seguimientoRevision || 'N/A',
+        responsable: r.responsable || 'N/A',
+        // Campos espejo de compatibilidad con versiones anteriores
         fechaAnalisis: r.fechaAnalisis || DEFAULT_FECHA_ANALISIS,
-        planAccion: r.planAccion || 'N/A',
-        mitigacion: r.mitigacion || 'N/A',
-        nuevaProbabilidad: r.nuevaProbabilidad ?? 'N/A',
-        nuevoImpacto: r.nuevoImpacto ?? 'N/A',
-        nuevoNivelRiesgo: r.nuevoNivelRiesgo || 'N/A',
+        planAccion: controlesImpl,
+        mitigacion: controlesComp,
+        nuevaProbabilidad: prob2,
+        nuevoImpacto: imp2,
+        nuevoNivelRiesgo: eval2.hasValue
+          ? `${eval2.zona} (${eval2.score})`
+          : 'N/A',
         fechaTratamiento: r.fechaTratamiento || 'N/A',
       };
     });
@@ -439,14 +655,12 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
       };
 
       if (matrizId && !isCreatingNewVersionRecord) {
-        // Misma versión: actualizar la matriz actual
         const resUpdate = await api.put(
           `/matriz/modificar/${matrizId}`,
           matrizPayload
         );
         savedMatrizHeader = resUpdate?.matriz || resUpdate;
       } else {
-        // Matriz nueva o cambio de versión (conservar versión anterior y crear nuevo registro)
         const resCreate = await api.post('/matriz/guardar', {
           ...matrizPayload,
           ...(isCreatingNewVersionRecord
@@ -506,7 +720,6 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
         return null;
       }
 
-      // Si se incrementó la versión estando en modo local, generar un nuevo ID para conservar la versión anterior
       const fallbackId =
         !currentMatrizId || isCreatingNewVersionRecord
           ? Date.now()
@@ -552,7 +765,6 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
     try {
       let targetMatrizId = currentMatrizId;
 
-      // Si la matriz es nueva o tiene cambios sin guardar, primero guardamos todos los cambios
       if (!targetMatrizId || hasUnsavedChanges) {
         targetMatrizId = await handleSaveMatrizToDatabase({
           silentSuccess: true,
@@ -622,35 +834,112 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
     }
   };
 
-  // Filtrado reactivo de la lista
+  // Opciones únicas de Estándar disponibles para el filtro en la barra de búsqueda
+  const availableStandards = useMemo(() => {
+    const map = new Map();
+    estandares.forEach((est) => {
+      const code = String(est.codigo_estandar || '').trim();
+      if (code && code !== 'N/A') {
+        map.set(code, {
+          codigo: code,
+          descripcion: est.descripcion || '',
+        });
+      }
+    });
+    risks.forEach((r) => {
+      const code = String(
+        r.estandar && r.estandar !== 'N/A'
+          ? r.estandar
+          : r.numeral && String(r.numeral).includes('.')
+          ? String(r.numeral).split('.')[0]
+          : ''
+      ).trim();
+      if (code && code !== 'N/A' && !map.has(code)) {
+        map.set(code, {
+          codigo: code,
+          descripcion: '',
+        });
+      }
+    });
+    return Array.from(map.values()).sort((a, b) =>
+      a.codigo.localeCompare(b.codigo, undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      })
+    );
+  }, [estandares, risks]);
+
+  // Filtrado reactivo de la lista (compatible con los campos de las 3 etapas)
   const filteredRisks = useMemo(() => {
     return risks.filter((risk) => {
-      const term = searchTerm.toLowerCase();
+      const term = String(searchTerm || '').toLowerCase();
       const matchesSearch =
-        risk.title.toLowerCase().includes(term) ||
-        risk.description.toLowerCase().includes(term) ||
-        risk.causa.toLowerCase().includes(term) ||
-        risk.consecuencia.toLowerCase().includes(term) ||
-        (risk.planAccion && risk.planAccion.toLowerCase().includes(term)) ||
-        (risk.mitigacion && risk.mitigacion.toLowerCase().includes(term)) ||
-        (risk.id && risk.id.toLowerCase().includes(term));
+        String(risk.numeral || '').toLowerCase().includes(term) ||
+        String(risk.contexto || '').toLowerCase().includes(term) ||
+        String(risk.proceso || '').toLowerCase().includes(term) ||
+        String(risk.title || '').toLowerCase().includes(term) ||
+        String(risk.description || '').toLowerCase().includes(term) ||
+        String(risk.causa || '').toLowerCase().includes(term) ||
+        String(risk.consecuencia || '').toLowerCase().includes(term) ||
+        String(risk.estandar || '').toLowerCase().includes(term) ||
+        String(risk.subestandar || '').toLowerCase().includes(term) ||
+        String(risk.controlesImplementados || risk.planAccion || '')
+          .toLowerCase()
+          .includes(term) ||
+        String(risk.controlesComplementarios || risk.mitigacion || '')
+          .toLowerCase()
+          .includes(term) ||
+        String(risk.seguimientoRevision || '').toLowerCase().includes(term) ||
+        String(risk.responsable || '').toLowerCase().includes(term) ||
+        String(risk.id ?? '').toLowerCase().includes(term);
 
+      const riskEstCode = String(
+        risk.estandar && risk.estandar !== 'N/A'
+          ? risk.estandar
+          : risk.numeral && String(risk.numeral).includes('.')
+          ? String(risk.numeral).split('.')[0]
+          : risk.numeral || ''
+      )
+        .trim()
+        .toLowerCase();
+
+      const matchesEstandar =
+        selectedEstandar === 'Todos' ||
+        riskEstCode === String(selectedEstandar).trim().toLowerCase();
+
+      const contextoRaw = String(
+        risk.contexto || risk.factor || ''
+      ).toLowerCase();
       const matchesFactor =
-        selectedFactor === 'Todos' || risk.factor === selectedFactor;
+        selectedFactor === 'Todos' ||
+        String(risk.factor || '') === selectedFactor ||
+        String(risk.contexto || '') === selectedFactor ||
+        (selectedFactor === 'Interno' && contextoRaw.includes('interno')) ||
+        (selectedFactor === 'Externo' && contextoRaw.includes('externo'));
+
+      const controlesImpl =
+        risk.controlesImplementados ?? risk.planAccion ?? 'N/A';
+      const controlesComp =
+        risk.controlesComplementarios ?? risk.mitigacion ?? 'N/A';
+      const prob2 = risk.probabilidadEtapa2 ?? risk.nuevaProbabilidad ?? 'N/A';
+      const prob3 = risk.probabilidadEtapa3 ?? 'N/A';
 
       const hasTreatment =
-        risk.planAccion !== 'N/A' ||
-        risk.mitigacion !== 'N/A' ||
-        risk.nuevaProbabilidad !== 'N/A';
+        controlesImpl !== 'N/A' ||
+        controlesComp !== 'N/A' ||
+        prob2 !== 'N/A' ||
+        prob3 !== 'N/A';
 
       const matchesTreatment =
         treatmentFilter === 'Todos' ||
         (treatmentFilter === 'Con Tratamiento' && hasTreatment) ||
         (treatmentFilter === 'Sin Tratamiento' && !hasTreatment);
 
-      return matchesSearch && matchesFactor && matchesTreatment;
+      return (
+        matchesSearch && matchesEstandar && matchesFactor && matchesTreatment
+      );
     });
-  }, [risks, searchTerm, selectedFactor, treatmentFilter]);
+  }, [risks, searchTerm, selectedEstandar, selectedFactor, treatmentFilter]);
 
   return (
     <div className="space-y-6">
@@ -673,13 +962,16 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
       <MatrizFilterBar
         searchTerm={searchTerm}
         setSearchTerm={setSearchTerm}
+        selectedEstandar={selectedEstandar}
+        setSelectedEstandar={setSelectedEstandar}
+        availableStandards={availableStandards}
         selectedFactor={selectedFactor}
         setSelectedFactor={setSelectedFactor}
         treatmentFilter={treatmentFilter}
         setTreatmentFilter={setTreatmentFilter}
       />
 
-      {/* Tabla Principal de la Matriz */}
+      {/* Tabla Principal de la Matriz con las 3 Etapas */}
       <MatrizTable
         risks={risks}
         filteredRisks={filteredRisks}
@@ -690,6 +982,7 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
         onDeleteRisk={handleDeleteRisk}
         onResetFilters={() => {
           setSearchTerm('');
+          setSelectedEstandar('Todos');
           setSelectedFactor('Todos');
           setTreatmentFilter('Todos');
         }}
@@ -736,7 +1029,7 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
         </button>
       </div>
 
-      {/* Modal de Agregar / Modificar Riesgo y Tratamiento */}
+      {/* Modal de Agregar / Modificar Riesgo en las 3 Etapas */}
       <MatrizRiskModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
