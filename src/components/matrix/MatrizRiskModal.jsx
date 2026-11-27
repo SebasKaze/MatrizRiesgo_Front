@@ -315,7 +315,7 @@ export function MatrizRiskModal({
 
             <div className="p-3 bg-white rounded-lg border border-indigo-200 flex flex-wrap items-center justify-between gap-2 text-xs">
               <span className="font-semibold text-slate-600">
-                Resultado Etapa 1 (Grado y Zona de Riesgo):
+                Resultado Etapa 1 (Grado y Tipo de Riesgo):
               </span>
               <div className="flex items-center gap-2">
                 <span className="font-mono font-bold px-2.5 py-1 rounded-md bg-slate-100 text-slate-800 border border-slate-200">
@@ -324,7 +324,7 @@ export function MatrizRiskModal({
                 <span
                   className={`font-bold px-2.5 py-1 rounded-md border ${evalEtapa1.colorClass}`}
                 >
-                  Zona: {evalEtapa1.zona}
+                  Tipo: {evalEtapa1.zona}
                 </span>
               </div>
             </div>
@@ -410,7 +410,7 @@ export function MatrizRiskModal({
 
             <div className="p-3 bg-white rounded-lg border border-amber-200 flex flex-wrap items-center justify-between gap-2 text-xs">
               <span className="font-semibold text-slate-600">
-                Resultado Etapa 2 (Grado y Zona de Riesgo):
+                Resultado Etapa 2 (Grado y Tipo de Riesgo):
               </span>
               {evalEtapa2.hasValue ? (
                 <div className="flex items-center gap-2">
@@ -420,12 +420,12 @@ export function MatrizRiskModal({
                   <span
                     className={`font-bold px-2.5 py-1 rounded-md border ${evalEtapa2.colorClass}`}
                   >
-                    Zona: {evalEtapa2.zona}
+                    Tipo: {evalEtapa2.zona}
                   </span>
                 </div>
               ) : (
                 <span className="text-slate-400 italic font-mono">
-                  Selecciona Probabilidad e Impacto de Etapa 2 para calcular Grado y Zona
+                  Selecciona Probabilidad e Impacto de Etapa 2 para calcular Grado y Tipo
                 </span>
               )}
             </div>
@@ -509,7 +509,7 @@ export function MatrizRiskModal({
 
             <div className="p-3 bg-white rounded-lg border border-emerald-200 flex flex-wrap items-center justify-between gap-2 text-xs">
               <span className="font-semibold text-slate-600">
-                Resultado Etapa 3 (Grado y Zona de Riesgo Residual):
+                Resultado Etapa 3 (Grado y Tipo de Riesgo Residual):
               </span>
               {evalEtapa3.hasValue ? (
                 <div className="flex items-center gap-2">
@@ -519,12 +519,12 @@ export function MatrizRiskModal({
                   <span
                     className={`font-bold px-2.5 py-1 rounded-md border ${evalEtapa3.colorClass}`}
                   >
-                    Zona: {evalEtapa3.zona}
+                    Tipo: {evalEtapa3.zona}
                   </span>
                 </div>
               ) : (
                 <span className="text-slate-400 italic font-mono">
-                  Selecciona Probabilidad e Impacto de Etapa 3 para calcular Grado y Zona
+                  Selecciona Probabilidad e Impacto de Etapa 3 para calcular Grado y Tipo
                 </span>
               )}
             </div>

@@ -25,6 +25,7 @@ export function MatrizTable({
   filteredRisks,
   isLoadingDatos,
   isCreatingNew,
+  isMatrizBloqueada = false,
   onOpenCreateModal,
   onOpenEditModal,
   onDeleteRisk,
@@ -103,7 +104,7 @@ export function MatrizTable({
                 Grado Riesgo
               </th>
               <th className="py-3 px-3 min-w-[130px] text-center border-r-2 border-indigo-200 bg-indigo-50/80 text-indigo-950">
-                Zona de Riesgo
+                Tipo de Riesgo
               </th>
 
               {/* === ETAPA 2 (5 columnas) === */}
@@ -120,7 +121,7 @@ export function MatrizTable({
                 Grado Riesgo
               </th>
               <th className="py-3 px-3 min-w-[130px] text-center border-r-2 border-amber-200 bg-amber-50/70 text-amber-950">
-                Zona de Riesgo
+                Tipo de Riesgo
               </th>
 
               {/* === ETAPA 3 (7 columnas) === */}
@@ -137,7 +138,7 @@ export function MatrizTable({
                 Grado Riesgo
               </th>
               <th className="py-3 px-3 min-w-[130px] text-center border-r border-slate-200 bg-emerald-50/70 text-emerald-950">
-                Zona de Riesgo
+                Tipo de Riesgo
               </th>
               <th className="py-3 px-3.5 min-w-[260px] border-r border-slate-200 bg-emerald-50/40 text-emerald-950">
                 Seguimiento y Revisión de Riesgos Residuales
@@ -517,16 +518,26 @@ export function MatrizTable({
                         <button
                           type="button"
                           onClick={() => onOpenEditModal(risk)}
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
-                          title="Modificar riesgo y sus 3 etapas"
+                          disabled={isMatrizBloqueada}
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors cursor-pointer"
+                          title={
+                            isMatrizBloqueada
+                              ? 'Matriz bloqueada (solo consulta)'
+                              : 'Modificar riesgo y sus 3 etapas'
+                          }
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
                         <button
                           type="button"
                           onClick={() => onDeleteRisk(risk.id)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                          title="Eliminar riesgo"
+                          disabled={isMatrizBloqueada}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors cursor-pointer"
+                          title={
+                            isMatrizBloqueada
+                              ? 'Matriz bloqueada (solo consulta)'
+                              : 'Eliminar riesgo'
+                          }
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -557,7 +568,8 @@ export function MatrizTable({
                         <button
                           type="button"
                           onClick={onOpenCreateModal}
-                          className="mt-1 inline-flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                          disabled={isMatrizBloqueada}
+                          className="mt-1 inline-flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
                         >
                           <PlusCircle className="w-3.5 h-3.5" />
                           Agregar Riesgo a la Matriz
@@ -585,14 +597,14 @@ export function MatrizTable({
         </table>
       </div>
 
-      {/* Footer Informativo con Zonas de Riesgo */}
+      {/* Footer Informativo con Tipos de Riesgo */}
       <div className="p-4 bg-slate-50/80 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-2">
         <span>
           Mostrando <strong>{filteredRisks.length}</strong> de{' '}
           <strong>{risks.length}</strong> riesgos en la matriz.
         </span>
         <div className="flex flex-wrap items-center gap-3">
-          <span className="font-semibold text-slate-600">Zonas de Riesgo:</span>
+          <span className="font-semibold text-slate-600">Tipo de Riesgo:</span>
           <span className="flex items-center gap-1">
             <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Aceptable (1-2)
           </span>

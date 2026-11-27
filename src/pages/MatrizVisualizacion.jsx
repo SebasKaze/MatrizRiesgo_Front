@@ -10,12 +10,40 @@ import { MatrizFilterBar } from '../components/matrix/MatrizFilterBar';
 import { MatrizTable } from '../components/matrix/MatrizTable';
 import { MatrizRiskModal } from '../components/matrix/MatrizRiskModal';
 import { MatrizStandardsModal } from '../components/matrix/MatrizStandardsModal';
-import { Save, RefreshCw, FileSpreadsheet } from 'lucide-react';
+import { Save, RefreshCw, FileSpreadsheet, Lock, X } from 'lucide-react';
 
 // Fecha predeterminada de análisis
 const DEFAULT_FECHA_ANALISIS = new Date().toISOString().split('T')[0];
 const MATRICES_STORAGE_KEY = 'matrices_empresa_storage';
+const MATRICES_BLOQUEADAS_STORAGE_KEY = 'matrices_bloqueadas_storage';
 const getMatrizDatosStorageKey = (matrizId) => `matriz_datos_${matrizId}`;
+
+function getBlockedMatricesMap() {
+  try {
+    const raw = localStorage.getItem(MATRICES_BLOQUEADAS_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function markMatrizAsBlockedInStorage(matrizId) {
+  if (!matrizId) return;
+  try {
+    const map = getBlockedMatricesMap();
+    map[String(matrizId)] = true;
+    localStorage.setItem(MATRICES_BLOQUEADAS_STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function isMatrizBlockedInStorage(matrizId) {
+  if (!matrizId) return false;
+  const map = getBlockedMatricesMap();
+  return Boolean(map[String(matrizId)]);
+}
 
 // Transforma un riesgo del catálogo general (proveniente de /api/riesgos/verriesgos o /api/riesgos/por-estandares)
 // o de matriz_datos guardados al formato de 3 Etapas con Estándar y Subestándar separados
@@ -193,13 +221,18 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
   const [identificador, setIdentificador] = useState(
     activeMatriz?.identificador || ''
   );
-  // Versión base de la matriz que se está editando (impide bajar a una versión menor)
-  const [baseVersionMatriz, setBaseVersionMatriz] = useState(
-    Number(activeMatriz?.version_matriz) || 1
-  );
   const [versionMatriz, setVersionMatriz] = useState(
     Number(activeMatriz?.version_matriz) || 1
   );
+  const [isMatrizBloqueada, setIsMatrizBloqueada] = useState(() =>
+    Boolean(
+      activeMatriz?.bloqueada ||
+        activeMatriz?.matriz_bloqueada ||
+        isMatrizBlockedInStorage(activeMatriz?.id)
+    )
+  );
+  const [isBlockModalOpen, setIsBlockModalOpen] = useState(false);
+  const [isBlockingMatriz, setIsBlockingMatriz] = useState(false);
 
   const isCreatingNew = !activeMatriz && !currentMatrizId;
 
@@ -231,6 +264,28 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
 
     let isMounted = true;
     setIsLoadingDatos(true);
+    setCurrentMatrizId(activeMatriz.id);
+    setIdentificador(activeMatriz.identificador || '');
+    setVersionMatriz(Number(activeMatriz.version_matriz) || 1);
+
+    const initialBlocked = Boolean(
+      activeMatriz.bloqueada ||
+        activeMatriz.matriz_bloqueada ||
+        isMatrizBlockedInStorage(activeMatriz.id)
+    );
+    setIsMatrizBloqueada(initialBlocked);
+
+    const detectBlockedFromRows = (rows) => {
+      if (!Array.isArray(rows) || rows.length === 0) return initialBlocked;
+      const anyMarkedBlocked = rows.some((r) =>
+        Boolean(r?.matriz_bloqueada || r?.bloqueada)
+      );
+      if (anyMarkedBlocked) {
+        markMatrizAsBlockedInStorage(activeMatriz.id);
+        return true;
+      }
+      return initialBlocked;
+    };
 
     const loadExistingMatrixData = async () => {
       try {
@@ -249,6 +304,7 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
               mapCatalogRiskToMatrixRow(r, i, { estandares, subestandares })
             )
           );
+          setIsMatrizBloqueada(detectBlockedFromRows(rawDatos));
           setHasUnsavedChanges(false);
           setIsLoadingDatos(false);
           return;
@@ -270,6 +326,7 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
                 mapCatalogRiskToMatrixRow(r, i, { estandares, subestandares })
               )
             );
+            setIsMatrizBloqueada(detectBlockedFromRows(parsed));
           }
         } else if (Array.isArray(activeMatriz.datos)) {
           setRisks(
@@ -277,6 +334,7 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
               mapCatalogRiskToMatrixRow(r, i, { estandares, subestandares })
             )
           );
+          setIsMatrizBloqueada(detectBlockedFromRows(activeMatriz.datos));
         }
         setHasUnsavedChanges(false);
       } catch {
@@ -294,15 +352,8 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
   }, [activeMatriz, estandares, subestandares]);
 
   const handleIdentificadorChange = (val) => {
+    if (isMatrizBloqueada) return;
     setIdentificador(val);
-    setHasUnsavedChanges(true);
-    setSaveFeedback(null);
-  };
-
-  const handleVersionChange = (val) => {
-    const minAllowed = Number(baseVersionMatriz) || 1;
-    const nextVersion = Math.max(minAllowed, Number(val) || minAllowed);
-    setVersionMatriz(nextVersion);
     setHasUnsavedChanges(true);
     setSaveFeedback(null);
   };
@@ -380,6 +431,7 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
   });
 
   const handleOpenCreateModal = () => {
+    if (isMatrizBloqueada) return;
     setEditingRisk(null);
     setFormData({
       estandar: '',
@@ -415,6 +467,7 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
   };
 
   const handleOpenEditModal = (risk) => {
+    if (isMatrizBloqueada) return;
     setEditingRisk(risk);
     const estVal =
       risk.codigo_estandar && risk.codigo_estandar !== 'N/A'
@@ -482,7 +535,7 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
 
   const handleSaveRisk = (e) => {
     e.preventDefault();
-    if (!formData.title.trim()) return;
+    if (isMatrizBloqueada || !formData.title.trim()) return;
 
     const eval1 = getMatrixZoneEvaluation(
       formData.probability,
@@ -590,6 +643,7 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
   };
 
   const handleDeleteRisk = (id) => {
+    if (isMatrizBloqueada) return;
     if (
       window.confirm(
         '¿Estás seguro de que deseas eliminar este riesgo de la matriz?'
@@ -601,17 +655,22 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
     }
   };
 
-  const syncLocalMatrizStorage = (matrizRecord) => {
+  const syncLocalMatrizStorage = (
+    matrizRecord,
+    { setAsActive = true } = {}
+  ) => {
     try {
       const { datos, ...headerOnly } = matrizRecord;
       localStorage.setItem(
         getMatrizDatosStorageKey(matrizRecord.id),
         JSON.stringify(datos)
       );
-      localStorage.setItem(
-        ACTIVE_MATRIZ_STORAGE_KEY,
-        JSON.stringify(headerOnly)
-      );
+      if (setAsActive) {
+        localStorage.setItem(
+          ACTIVE_MATRIZ_STORAGE_KEY,
+          JSON.stringify(headerOnly)
+        );
+      }
 
       const storedList = localStorage.getItem(MATRICES_STORAGE_KEY);
       const parsedList = storedList ? JSON.parse(storedList) : [];
@@ -629,28 +688,9 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
     }
   };
 
-  // Guardar la Matriz en la BD:
-  // Paso 1: Guardar cabecera en tabla `matriz` (empresa_id, identificador, version_matriz)
-  // Paso 2: Guardar contenido JSONB con las 3 etapas (y Estándar/Subestándar separados) en tabla `matriz_datos`
-  const handleSaveMatrizToDatabase = async ({ silentSuccess = false } = {}) => {
-    setSaveFeedback(null);
-
-    const finalIdentificador =
-      identificador.trim() || 'Matriz Operativa de Riesgos';
-
-    if (!identificador.trim()) {
-      setIdentificador(finalIdentificador);
-    }
-
-    const empresaId = activeMatriz?.empresa_id ?? user?.empresa_id ?? 1;
-    const minVersion = Number(baseVersionMatriz) || 1;
-    const version = Math.max(minVersion, Number(versionMatriz) || minVersion);
-
-    const isCreatingNewVersionRecord = Boolean(
-      currentMatrizId && version > minVersion
-    );
-
-    const datosJsonb = risks.map((r) => {
+  // Construye el arreglo JSONB de riesgos de la matriz con el estado de bloqueo indicado
+  const buildDatosJsonb = (risksList, { bloqueada = false } = {}) => {
+    return risksList.map((r) => {
       const eval1 = getMatrixZoneEvaluation(r.probability, r.impact);
       const prob2 = r.probabilidadEtapa2 ?? r.nuevaProbabilidad ?? 'N/A';
       const imp2 = r.impactoEtapa2 ?? r.nuevoImpacto ?? 'N/A';
@@ -728,8 +768,28 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
           ? `${eval2.zona} (${eval2.score})`
           : 'N/A',
         fechaTratamiento: r.fechaTratamiento || 'N/A',
+        // Estado de bloqueo de la versión
+        bloqueada: Boolean(bloqueada),
+        matriz_bloqueada: Boolean(bloqueada),
       };
     });
+  };
+
+  // Guardar la Matriz en la BD con la versión actual en la que se encuentra (sin permitir cambio manual de versión)
+  const handleSaveMatrizToDatabase = async ({ silentSuccess = false } = {}) => {
+    if (isMatrizBloqueada) return currentMatrizId;
+    setSaveFeedback(null);
+
+    const finalIdentificador =
+      identificador.trim() || 'Matriz Operativa de Riesgos';
+
+    if (!identificador.trim()) {
+      setIdentificador(finalIdentificador);
+    }
+
+    const empresaId = activeMatriz?.empresa_id ?? user?.empresa_id ?? 1;
+    const version = Number(versionMatriz) || 1;
+    const datosJsonb = buildDatosJsonb(risks, { bloqueada: false });
 
     setIsSavingMatriz(true);
 
@@ -737,26 +797,21 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
       let matrizId = currentMatrizId;
       let savedMatrizHeader = null;
 
-      // PASO 1: Guardar o actualizar registro en la tabla `matriz`
+      // PASO 1: Guardar o actualizar registro en la tabla `matriz` manteniendo su versión actual
       const matrizPayload = {
         empresa_id: empresaId,
         identificador: finalIdentificador,
         version_matriz: version,
       };
 
-      if (matrizId && !isCreatingNewVersionRecord) {
+      if (matrizId) {
         const resUpdate = await api.put(
           `/matriz/modificar/${matrizId}`,
           matrizPayload
         );
         savedMatrizHeader = resUpdate?.matriz || resUpdate;
       } else {
-        const resCreate = await api.post('/matriz/guardar', {
-          ...matrizPayload,
-          ...(isCreatingNewVersionRecord
-            ? { matriz_origen_id: currentMatrizId }
-            : {}),
-        });
+        const resCreate = await api.post('/matriz/guardar', matrizPayload);
         savedMatrizHeader = resCreate?.matriz || resCreate;
         matrizId = savedMatrizHeader?.id;
       }
@@ -774,7 +829,6 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
       });
 
       setCurrentMatrizId(matrizId);
-      setBaseVersionMatriz(version);
       setVersionMatriz(version);
       setHasUnsavedChanges(false);
 
@@ -783,6 +837,7 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
         empresa_id: empresaId,
         identificador: finalIdentificador,
         version_matriz: version,
+        bloqueada: false,
         fecha_creacion:
           savedMatrizHeader?.fecha_creacion || new Date().toISOString(),
         fecha_actualizacion: new Date().toISOString(),
@@ -792,9 +847,7 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
       if (!silentSuccess) {
         setSaveFeedback({
           type: 'success',
-          message: isCreatingNewVersionRecord
-            ? `Se creó un nuevo registro para "${finalIdentificador}" (Versión ${version}, ID #${matrizId}) conservando intacta la Versión ${minVersion}.`
-            : `Matriz "${finalIdentificador}" (Versión ${version}, ID #${matrizId}) y sus ${datosJsonb.length} riesgos guardados exitosamente en "matriz" y "matriz_datos".`,
+          message: `Matriz "${finalIdentificador}" (Versión ${version}, ID #${matrizId}) y sus ${datosJsonb.length} riesgos guardados exitosamente en "matriz" y "matriz_datos".`,
         });
       }
 
@@ -810,13 +863,9 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
         return null;
       }
 
-      const fallbackId =
-        !currentMatrizId || isCreatingNewVersionRecord
-          ? Date.now()
-          : currentMatrizId;
+      const fallbackId = currentMatrizId || Date.now();
 
       setCurrentMatrizId(fallbackId);
-      setBaseVersionMatriz(version);
       setVersionMatriz(version);
       setHasUnsavedChanges(false);
 
@@ -825,9 +874,9 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
         empresa_id: empresaId,
         identificador: finalIdentificador,
         version_matriz: version,
-        fecha_creacion: isCreatingNewVersionRecord
-          ? new Date().toISOString()
-          : activeMatriz?.fecha_creacion || new Date().toISOString(),
+        bloqueada: false,
+        fecha_creacion:
+          activeMatriz?.fecha_creacion || new Date().toISOString(),
         fecha_actualizacion: new Date().toISOString(),
         datos: datosJsonb,
       });
@@ -835,9 +884,7 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
       if (!silentSuccess) {
         setSaveFeedback({
           type: 'success',
-          message: isCreatingNewVersionRecord
-            ? `Se generó un nuevo registro local para "${finalIdentificador}" (Versión ${version}, ID #${fallbackId}) conservando la Versión ${minVersion}.`
-            : `Matriz "${finalIdentificador}" (Versión ${version}) preparada y guardada localmente (${datosJsonb.length} riesgos listos para "matriz_datos").`,
+          message: `Matriz "${finalIdentificador}" (Versión ${version}) preparada y guardada localmente (${datosJsonb.length} riesgos listos para "matriz_datos").`,
         });
       }
 
@@ -847,7 +894,197 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
     }
   };
 
-  // Guardar primero cualquier cambio pendiente de la matriz y posteriormente llamar al endpoint para generar el archivo Excel
+  // Bloquear la matriz actual:
+  // 1) Guarda y bloquea la matriz con su versión actual (quedando únicamente de consulta).
+  // 2) Genera una copia de la matriz actual incrementando la versión en 1 (version actual + 1).
+  const handleConfirmBlockMatriz = async () => {
+    if (isMatrizBloqueada) return;
+    setSaveFeedback(null);
+
+    const finalIdentificador =
+      identificador.trim() || 'Matriz Operativa de Riesgos';
+
+    if (!identificador.trim()) {
+      setIdentificador(finalIdentificador);
+    }
+
+    const empresaId = activeMatriz?.empresa_id ?? user?.empresa_id ?? 1;
+    const currentVersion = Number(versionMatriz) || 1;
+    const nextVersion = currentVersion + 1;
+
+    const lockedDatosJsonb = buildDatosJsonb(risks, { bloqueada: true });
+    const copyDatosJsonb = buildDatosJsonb(risks, { bloqueada: false });
+
+    setIsBlockingMatriz(true);
+
+    try {
+      let lockedMatrizId = currentMatrizId;
+      let savedLockedHeader = null;
+
+      // PASO 1: Guardar la matriz en la versión actual que se va a bloquear
+      const currentPayload = {
+        empresa_id: empresaId,
+        identificador: finalIdentificador,
+        version_matriz: currentVersion,
+      };
+
+      if (lockedMatrizId) {
+        const resUpdate = await api.put(
+          `/matriz/modificar/${lockedMatrizId}`,
+          currentPayload
+        );
+        savedLockedHeader = resUpdate?.matriz || resUpdate;
+      } else {
+        const resCreateCurrent = await api.post(
+          '/matriz/guardar',
+          currentPayload
+        );
+        savedLockedHeader = resCreateCurrent?.matriz || resCreateCurrent;
+        lockedMatrizId = savedLockedHeader?.id;
+      }
+
+      if (!lockedMatrizId) {
+        throw new Error(
+          'No se pudo obtener el ID al guardar la matriz actual antes de bloquearla.'
+        );
+      }
+
+      await api.post('/matriz_datos', {
+        matriz_id: lockedMatrizId,
+        datos: lockedDatosJsonb,
+      });
+
+      // PASO 2: Generar la copia de la matriz con versión (versión actual + 1)
+      const resCopy = await api.post('/matriz/guardar', {
+        empresa_id: empresaId,
+        identificador: finalIdentificador,
+        version_matriz: nextVersion,
+        matriz_origen_id: lockedMatrizId,
+      });
+      const savedCopyHeader = resCopy?.matriz || resCopy;
+      const copyMatrizId = savedCopyHeader?.id;
+
+      if (!copyMatrizId) {
+        throw new Error(
+          `La matriz v${currentVersion} se guardó, pero el servidor no devolvió el ID de la copia v${nextVersion}.`
+        );
+      }
+
+      await api.post('/matriz_datos', {
+        matriz_id: copyMatrizId,
+        datos: copyDatosJsonb,
+      });
+
+      // Persistir estado de bloqueo para la versión actual y registrar la nueva copia
+      markMatrizAsBlockedInStorage(lockedMatrizId);
+
+      syncLocalMatrizStorage(
+        {
+          id: lockedMatrizId,
+          empresa_id: empresaId,
+          identificador: finalIdentificador,
+          version_matriz: currentVersion,
+          bloqueada: true,
+          matriz_bloqueada: true,
+          fecha_creacion:
+            savedLockedHeader?.fecha_creacion || new Date().toISOString(),
+          fecha_actualizacion: new Date().toISOString(),
+          datos: lockedDatosJsonb,
+        },
+        { setAsActive: true }
+      );
+
+      syncLocalMatrizStorage(
+        {
+          id: copyMatrizId,
+          empresa_id: empresaId,
+          identificador: finalIdentificador,
+          version_matriz: nextVersion,
+          bloqueada: false,
+          matriz_bloqueada: false,
+          fecha_creacion:
+            savedCopyHeader?.fecha_creacion || new Date().toISOString(),
+          fecha_actualizacion: new Date().toISOString(),
+          datos: copyDatosJsonb,
+        },
+        { setAsActive: false }
+      );
+
+      setCurrentMatrizId(lockedMatrizId);
+      setVersionMatriz(currentVersion);
+      setIsMatrizBloqueada(true);
+      setHasUnsavedChanges(false);
+      setIsBlockModalOpen(false);
+
+      setSaveFeedback({
+        type: 'success',
+        message: `Matriz "${finalIdentificador}" (Versión ${currentVersion}, ID #${lockedMatrizId}) guardada y bloqueada como solo consulta. Se generó una copia con la Versión ${nextVersion} (ID #${copyMatrizId}).`,
+      });
+    } catch (error) {
+      if (error.status) {
+        setSaveFeedback({
+          type: 'error',
+          message:
+            error.message ||
+            'Ocurrió un error al bloquear y generar la nueva versión de la matriz.',
+        });
+        setIsBlockModalOpen(false);
+        return;
+      }
+
+      // Fallback offline en localStorage
+      const fallbackLockedId = currentMatrizId || Date.now();
+      const fallbackCopyId = fallbackLockedId + 1;
+
+      markMatrizAsBlockedInStorage(fallbackLockedId);
+
+      syncLocalMatrizStorage(
+        {
+          id: fallbackLockedId,
+          empresa_id: empresaId,
+          identificador: finalIdentificador,
+          version_matriz: currentVersion,
+          bloqueada: true,
+          matriz_bloqueada: true,
+          fecha_creacion:
+            activeMatriz?.fecha_creacion || new Date().toISOString(),
+          fecha_actualizacion: new Date().toISOString(),
+          datos: lockedDatosJsonb,
+        },
+        { setAsActive: true }
+      );
+
+      syncLocalMatrizStorage(
+        {
+          id: fallbackCopyId,
+          empresa_id: empresaId,
+          identificador: finalIdentificador,
+          version_matriz: nextVersion,
+          bloqueada: false,
+          matriz_bloqueada: false,
+          fecha_creacion: new Date().toISOString(),
+          fecha_actualizacion: new Date().toISOString(),
+          datos: copyDatosJsonb,
+        },
+        { setAsActive: false }
+      );
+
+      setCurrentMatrizId(fallbackLockedId);
+      setVersionMatriz(currentVersion);
+      setIsMatrizBloqueada(true);
+      setHasUnsavedChanges(false);
+      setIsBlockModalOpen(false);
+
+      setSaveFeedback({
+        type: 'success',
+        message: `Matriz "${finalIdentificador}" (Versión ${currentVersion}, ID #${fallbackLockedId}) bloqueada localmente como solo consulta. Se generó una copia en Versión ${nextVersion} (ID #${fallbackCopyId}).`,
+      });
+    } finally {
+      setIsBlockingMatriz(false);
+    }
+  };
+
+  // Exportar a Excel (permanece activo incluso cuando la matriz está bloqueada)
   const handleExportExcel = async () => {
     setSaveFeedback(null);
     setIsExportingExcel(true);
@@ -855,7 +1092,7 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
     try {
       let targetMatrizId = currentMatrizId;
 
-      if (!targetMatrizId || hasUnsavedChanges) {
+      if (!isMatrizBloqueada && (!targetMatrizId || hasUnsavedChanges)) {
         targetMatrizId = await handleSaveMatrizToDatabase({
           silentSuccess: true,
         });
@@ -908,16 +1145,20 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
 
       setSaveFeedback({
         type: 'success',
-        message: `Cambios guardados y archivo Excel de la matriz "${
-          identificador.trim() || `#${targetMatrizId}`
-        }" descargado correctamente.`,
+        message: isMatrizBloqueada
+          ? `Archivo Excel de la matriz bloqueada "${
+              identificador.trim() || `#${targetMatrizId}`
+            }" (v${Number(versionMatriz) || 1}) descargado correctamente.`
+          : `Cambios guardados y archivo Excel de la matriz "${
+              identificador.trim() || `#${targetMatrizId}`
+            }" descargado correctamente.`,
       });
     } catch (error) {
       setSaveFeedback({
         type: 'error',
         message:
           error.message ||
-          'Se guardaron los cambios de la matriz, pero no se pudo conectar con el endpoint de exportación a Excel.',
+          'No se pudo conectar con el endpoint de exportación a Excel.',
       });
     } finally {
       setIsExportingExcel(false);
@@ -1032,6 +1273,9 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
     });
   }, [risks, searchTerm, selectedEstandar, selectedFactor, treatmentFilter]);
 
+  const currentNumericVersion = Number(versionMatriz) || 1;
+  const nextNumericVersion = currentNumericVersion + 1;
+
   return (
     <div className="space-y-6">
       {/* Encabezado y Configuración de la Matriz */}
@@ -1041,8 +1285,14 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
         setIdentificador={handleIdentificadorChange}
         currentMatrizId={currentMatrizId}
         versionMatriz={versionMatriz}
-        minVersionMatriz={baseVersionMatriz}
-        setVersionMatriz={handleVersionChange}
+        isMatrizBloqueada={isMatrizBloqueada}
+        isSavingMatriz={isSavingMatriz}
+        isBlockingMatriz={isBlockingMatriz}
+        onOpenBlockModal={() => {
+          if (!isMatrizBloqueada) {
+            setIsBlockModalOpen(true);
+          }
+        }}
         onBack={onBack}
         onOpenCreateModal={handleOpenCreateModal}
         saveFeedback={saveFeedback}
@@ -1068,6 +1318,7 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
         filteredRisks={filteredRisks}
         isLoadingDatos={isLoadingDatos}
         isCreatingNew={isCreatingNew}
+        isMatrizBloqueada={isMatrizBloqueada}
         onOpenCreateModal={handleOpenCreateModal}
         onOpenEditModal={handleOpenEditModal}
         onDeleteRisk={handleDeleteRisk}
@@ -1084,8 +1335,13 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
         <button
           type="button"
           onClick={() => handleSaveMatrizToDatabase()}
-          disabled={isSavingMatriz || isExportingExcel}
-          className="inline-flex items-center gap-2.5 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white text-sm font-semibold rounded-xl shadow-md shadow-emerald-200 transition-colors cursor-pointer"
+          disabled={
+            isMatrizBloqueada ||
+            isSavingMatriz ||
+            isBlockingMatriz ||
+            isExportingExcel
+          }
+          className="inline-flex items-center gap-2.5 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl shadow-md shadow-emerald-200 transition-colors cursor-pointer"
         >
           {isSavingMatriz ? (
             <>
@@ -1103,13 +1359,17 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
         <button
           type="button"
           onClick={handleExportExcel}
-          disabled={isSavingMatriz || isExportingExcel}
+          disabled={isSavingMatriz || isBlockingMatriz || isExportingExcel}
           className="inline-flex items-center gap-2.5 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white text-sm font-semibold rounded-xl shadow-md shadow-indigo-200 transition-colors cursor-pointer"
         >
           {isExportingExcel ? (
             <>
               <RefreshCw className="w-4 h-4 animate-spin" />
-              <span>Guardando y Exportando...</span>
+              <span>
+                {isMatrizBloqueada
+                  ? 'Exportando Excel...'
+                  : 'Guardando y Exportando...'}
+              </span>
             </>
           ) : (
             <>
@@ -1120,9 +1380,75 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
         </button>
       </div>
 
+      {/* Modal de Confirmación para Bloquear Matriz */}
+      {isBlockModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-5">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">
+                    Bloquear Matriz (Versión {currentNumericVersion})
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Confirmación de bloqueo y generación de nueva versión
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isBlockingMatriz}
+                onClick={() => setIsBlockModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 cursor-pointer disabled:cursor-not-allowed"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 rounded-xl bg-amber-50/80 border border-amber-200 text-slate-800 text-sm leading-relaxed">
+              Esta matriz sera bloqueada, una vez bloqueada ya no se podra
+              modificar esta version en concreto. Se generara una copia de la
+              matriz con la version {nextNumericVersion} ¿Esta seguro?
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isBlockingMatriz}
+                onClick={() => setIsBlockModalOpen(false)}
+                className="px-4 py-2 border border-slate-200 text-slate-700 text-sm font-semibold rounded-xl hover:bg-slate-50 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isBlockingMatriz}
+                onClick={handleConfirmBlockMatriz}
+                className="inline-flex items-center gap-2 px-5 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 text-white text-sm font-semibold rounded-xl shadow-sm transition-colors cursor-pointer disabled:cursor-not-allowed"
+              >
+                {isBlockingMatriz ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Bloqueando y copiando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Lock className="w-4 h-4" />
+                    <span>Sí, Bloquear Matriz</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal de Agregar / Modificar Riesgo en las 3 Etapas */}
       <MatrizRiskModal
-        isOpen={isModalOpen}
+        isOpen={isModalOpen && !isMatrizBloqueada}
         onClose={() => setIsModalOpen(false)}
         editingRisk={editingRisk}
         formData={formData}
@@ -1133,7 +1459,7 @@ export function MatrizVisualizacion({ selectedMatriz = null, onBack }) {
       />
 
       {/* Pop-up de Selección de Estándares (solo al crear una matriz nueva) */}
-      {isCreatingNew && (
+      {isCreatingNew && !isMatrizBloqueada && (
         <MatrizStandardsModal
           isOpen={isStandardsModalOpen}
           onClose={() => setIsStandardsModalOpen(false)}

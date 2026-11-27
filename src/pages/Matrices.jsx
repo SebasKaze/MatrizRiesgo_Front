@@ -15,10 +15,39 @@ import {
   AlertCircle,
   ShieldCheck,
   Filter,
+  Lock,
+  Unlock,
+  Eye,
 } from 'lucide-react';
 
 const MATRICES_STORAGE_KEY = 'matrices_empresa_storage';
+const MATRICES_BLOQUEADAS_STORAGE_KEY = 'matrices_bloqueadas_storage';
 export const ACTIVE_MATRIZ_STORAGE_KEY = 'matriz_activa_edicion';
+
+function getBlockedMatricesMap() {
+  try {
+    const raw = localStorage.getItem(MATRICES_BLOQUEADAS_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function isMatrizBlockedInLocalDatos(matrizId) {
+  if (!matrizId) return false;
+  try {
+    const raw = localStorage.getItem(`matriz_datos_${matrizId}`);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    return (
+      Array.isArray(parsed) &&
+      parsed.some((r) => Boolean(r?.matriz_bloqueada || r?.bloqueada))
+    );
+  } catch {
+    return false;
+  }
+}
 
 // Datos iniciales de respaldo por si aún no responde el backend
 const getInitialLocalMatrices = (empresaId) => [
@@ -144,15 +173,58 @@ export function Matrices({ onCreateMatriz, onEditMatriz }) {
     }
   };
 
-  // Botón Editar: Guardar referencia de la matriz seleccionada (incluyendo su empresa_id) y redirigir a MatrizVisualizacion
+  // Determinar si una matriz se encuentra bloqueada
+  const checkIsMatrizBloqueada = useCallback(
+    (matriz) => {
+      if (!matriz) return false;
+      if (Boolean(matriz.bloqueada || matriz.matriz_bloqueada)) return true;
+
+      const blockedMap = getBlockedMatricesMap();
+      if (Boolean(blockedMap[String(matriz.id)])) return true;
+
+      if (isMatrizBlockedInLocalDatos(matriz.id)) return true;
+
+      // Si existe una copia con versión superior del mismo identificador y empresa, esta versión anterior está bloqueada
+      const currentVersion = Number(matriz.version_matriz) || 1;
+      const currentIdent = String(matriz.identificador || '')
+        .trim()
+        .toLowerCase();
+      if (currentIdent) {
+        const hasNewerVersion = matrices.some(
+          (other) =>
+            other.id !== matriz.id &&
+            Number(other.empresa_id) === Number(matriz.empresa_id) &&
+            String(other.identificador || '')
+              .trim()
+              .toLowerCase() === currentIdent &&
+            (Number(other.version_matriz) || 1) > currentVersion
+        );
+        if (hasNewerVersion) return true;
+      }
+
+      return false;
+    },
+    [matrices]
+  );
+
+  // Botón Editar / Ver: Guardar referencia de la matriz seleccionada (incluyendo su estado de bloqueo) y redirigir a MatrizVisualizacion
   const handleEdit = (matriz) => {
+    const bloqueada = checkIsMatrizBloqueada(matriz);
+    const matrizToOpen = {
+      ...matriz,
+      bloqueada,
+      matriz_bloqueada: bloqueada,
+    };
     try {
-      localStorage.setItem(ACTIVE_MATRIZ_STORAGE_KEY, JSON.stringify(matriz));
+      localStorage.setItem(
+        ACTIVE_MATRIZ_STORAGE_KEY,
+        JSON.stringify(matrizToOpen)
+      );
     } catch {
       // ignore
     }
     if (onEditMatriz) {
-      onEditMatriz(matriz);
+      onEditMatriz(matrizToOpen);
     }
   };
 
@@ -377,6 +449,9 @@ export function Matrices({ onCreateMatriz, onEditMatriz }) {
                 <th className="py-3.5 px-4 w-28 text-center border-r border-slate-200">
                   Versión
                 </th>
+                <th className="py-3.5 px-4 w-36 text-center border-r border-slate-200">
+                  Bloqueada
+                </th>
                 <th className="py-3.5 px-4 w-40 text-center border-r border-slate-200">
                   Fecha de Creación
                 </th>
@@ -389,98 +464,129 @@ export function Matrices({ onCreateMatriz, onEditMatriz }) {
 
             <tbody className="divide-y divide-slate-100 bg-white">
               {filteredMatrices.length > 0 ? (
-                filteredMatrices.map((matriz) => (
-                  <tr
-                    key={matriz.id}
-                    className="hover:bg-slate-50/90 transition-colors"
-                  >
-                    {/* ID */}
-                    <td className="py-4 px-4 text-center border-r border-slate-100 font-mono text-slate-500 font-semibold">
-                      #{matriz.id}
-                    </td>
+                filteredMatrices.map((matriz) => {
+                  const isBloqueada = checkIsMatrizBloqueada(matriz);
+                  return (
+                    <tr
+                      key={matriz.id}
+                      className="hover:bg-slate-50/90 transition-colors"
+                    >
+                      {/* ID */}
+                      <td className="py-4 px-4 text-center border-r border-slate-100 font-mono text-slate-500 font-semibold">
+                        #{matriz.id}
+                      </td>
 
-                    {/* Identificador */}
-                    <td className="py-4 px-4 border-r border-slate-100">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-                          <FileSpreadsheet className="w-4 h-4" />
+                      {/* Identificador */}
+                      <td className="py-4 px-4 border-r border-slate-100">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                            <FileSpreadsheet className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <p className="font-bold text-slate-900 text-sm">
+                              {matriz.identificador}
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-bold text-slate-900 text-sm">
-                            {matriz.identificador}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    {/* Empresa */}
-                    <td className="py-4 px-4 border-r border-slate-100">
-                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-medium text-xs">
-                        <Building2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                        <span>{getEmpresaDisplayName(matriz)}</span>
-                        <span className="text-[10px] text-slate-400 font-mono">
-                          (ID: {matriz.empresa_id || empresaId})
+                      {/* Empresa */}
+                      <td className="py-4 px-4 border-r border-slate-100">
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-medium text-xs">
+                          <Building2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                          <span>{getEmpresaDisplayName(matriz)}</span>
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            (ID: {matriz.empresa_id || empresaId})
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Versión */}
+                      <td className="py-4 px-4 text-center border-r border-slate-100">
+                        <Badge
+                          variant="low"
+                          className="inline-flex items-center gap-1"
+                        >
+                          <Layers className="w-3 h-3" />
+                          v{matriz.version_matriz ?? 1}
+                        </Badge>
+                      </td>
+
+                      {/* Estado de Bloqueo (a un costado de Versión) */}
+                      <td className="py-4 px-4 text-center border-r border-slate-100">
+                        {isBloqueada ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                            <Lock className="w-3 h-3" />
+                            Bloqueada
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <Unlock className="w-3 h-3" />
+                            No bloqueada
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Fecha Creación */}
+                      <td className="py-4 px-4 text-center border-r border-slate-100 text-slate-600">
+                        <span className="inline-flex items-center gap-1.5 font-mono text-[11px]">
+                          <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                          {formatDate(matriz.fecha_creacion)}
                         </span>
-                      </div>
-                    </td>
+                      </td>
 
-                    {/* Versión */}
-                    <td className="py-4 px-4 text-center border-r border-slate-100">
-                      <Badge
-                        variant="low"
-                        className="inline-flex items-center gap-1"
-                      >
-                        <Layers className="w-3 h-3" />
-                        v{matriz.version_matriz ?? 1}
-                      </Badge>
-                    </td>
+                      {/* Fecha Actualización */}
+                      <td className="py-4 px-4 text-center border-r border-slate-100 text-slate-600">
+                        <span className="inline-flex items-center gap-1.5 font-mono text-[11px]">
+                          <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                          {formatDate(matriz.fecha_actualizacion)}
+                        </span>
+                      </td>
 
-                    {/* Fecha Creación */}
-                    <td className="py-4 px-4 text-center border-r border-slate-100 text-slate-600">
-                      <span className="inline-flex items-center gap-1.5 font-mono text-[11px]">
-                        <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                        {formatDate(matriz.fecha_creacion)}
-                      </span>
-                    </td>
+                      {/* Botones de Acción: Ver/Editar y Eliminar */}
+                      <td className="py-4 px-4 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleEdit(matriz)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-xs transition-colors cursor-pointer"
+                            title={
+                              isBloqueada
+                                ? 'Ver matriz (solo consulta)'
+                                : 'Editar matriz'
+                            }
+                          >
+                            {isBloqueada ? (
+                              <>
+                                <Eye className="w-3.5 h-3.5" />
+                                Ver
+                              </>
+                            ) : (
+                              <>
+                                <Pencil className="w-3.5 h-3.5" />
+                                Editar
+                              </>
+                            )}
+                          </button>
 
-                    {/* Fecha Actualización */}
-                    <td className="py-4 px-4 text-center border-r border-slate-100 text-slate-600">
-                      <span className="inline-flex items-center gap-1.5 font-mono text-[11px]">
-                        <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                        {formatDate(matriz.fecha_actualizacion)}
-                      </span>
-                    </td>
-
-                    {/* Botones de Acción: Editar y Eliminar */}
-                    <td className="py-4 px-4 text-center">
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleEdit(matriz)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-xs transition-colors cursor-pointer"
-                          title="Editar matriz"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                          Editar
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(matriz)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 font-semibold text-xs transition-colors cursor-pointer"
-                          title="Eliminar matriz"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          Eliminar
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(matriz)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 font-semibold text-xs transition-colors cursor-pointer"
+                            title="Eliminar matriz"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            Eliminar
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               ) : (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={8}
                     className="py-12 text-center text-slate-500 bg-white"
                   >
                     <div className="flex flex-col items-center justify-center gap-2">
